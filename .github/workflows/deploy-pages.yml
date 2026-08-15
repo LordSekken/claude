@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - main
+      - claude/intersection-editor-wtv0fl
   workflow_dispatch:
 
 permissions:
