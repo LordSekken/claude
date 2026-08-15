@@ -41,7 +41,11 @@ export default function MapView({ onMapReady, onMapClick, roads, design }: MapVi
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current).setView([36.746, -119.772], 18);
+    const map = L.map(containerRef.current, { zoomControl: false }).setView(
+      [36.746, -119.772],
+      18
+    );
+    L.control.zoom({ position: "bottomright" }).addTo(map);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 20,
       attribution: "&copy; OpenStreetMap contributors",

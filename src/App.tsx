@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import L from "leaflet";
 import MapView from "./components/MapView";
-import Sidebar from "./components/Sidebar";
+import SearchBar from "./components/SearchBar";
+import ToolsSheet from "./components/ToolsSheet";
 import { geocode, type GeocodeResult } from "./lib/geocode";
 import { fetchRoadsNear, type RoadWay } from "./lib/overpass";
 import {
@@ -26,6 +27,7 @@ export default function App() {
 
   const [params, setParams] = useState<RoundaboutParams | null>(null);
   const [design, setDesign] = useState<RoundaboutDesign | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const pickResult = useCallback(
     (r: GeocodeResult) => {
@@ -57,6 +59,7 @@ export default function App() {
 
   const handleMapClick = useCallback((lngLat: [number, number]) => {
     setCenter(lngLat);
+    setSheetOpen(true);
   }, []);
 
   const handleFetchRoads = useCallback(async () => {
@@ -113,11 +116,21 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar
+      <div className="map-container">
+        <MapView onMapReady={setMap} onMapClick={handleMapClick} roads={roads} design={design} />
+      </div>
+      <SearchBar
         onSearch={handleSearch}
         searching={searching}
         searchResults={searchResults}
-        onPickResult={pickResult}
+        onPickResult={(r) => {
+          pickResult(r);
+          setSheetOpen(true);
+        }}
+      />
+      <ToolsSheet
+        open={sheetOpen}
+        onToggle={() => setSheetOpen((o) => !o)}
         onFetchRoads={handleFetchRoads}
         fetchingRoads={fetchingRoads}
         roadCount={roads.length}
@@ -125,12 +138,12 @@ export default function App() {
         params={params}
         onParamsChange={handleParamsChange}
         onDetectLegs={handleDetectLegs}
-        onPlaceRoundabout={handlePlaceRoundabout}
+        onPlaceRoundabout={() => {
+          handlePlaceRoundabout();
+          setSheetOpen(true);
+        }}
         onExport={handleExport}
       />
-      <div className="map-container">
-        <MapView onMapReady={setMap} onMapClick={handleMapClick} roads={roads} design={design} />
-      </div>
     </div>
   );
 }
