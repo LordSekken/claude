@@ -16,6 +16,9 @@ var start_xform := Transform3D(Basis(), Vector3(0, 1, 0))
 var clips: Array = []  # [{node, data, cooldown}]
 var pause_menu: Control
 var build_result: Dictionary = {}
+var vr: VrRig
+var settings: Node
+var ffb: Node
 
 
 ## track: either a TrackSpec dictionary or {"external": path}
@@ -66,12 +69,27 @@ func start(track: Dictionary, car_build: Dictionary) -> String:
 	vehicle.reset_to(start_xform)
 	vehicle.hard_impact.connect(scorer.on_wall_impact)
 
+	settings = get_node("/root/Settings")
+	ffb = get_node("/root/ForceFeedback")
+	var visual: CarVisual = vehicle.get_child(vehicle.get_child_count() - 1)
+	var lock_deg := rad_to_deg(float(build_result.spec.steer_lock))
+	visual.steer_ratio = clampf(float(settings.wheel_rotation_deg) * 0.5 / maxf(lock_deg, 1.0), 4.0, 20.0)
 	camera = ChaseCamera.new()
 	camera.target = vehicle
 	camera.far = 3000.0
+	camera.near = 0.04
+	camera.mode = clampi(int(settings.camera_mode), 0, ChaseCamera.Mode.size() - 1) as ChaseCamera.Mode
+	camera.look_to_apex = bool(settings.look_to_apex)
+	camera.seat_offset = settings.seat_offset
 	add_child(camera)
 	camera.snap()
 	camera.make_current()
+	if VrRig.available():
+		vr = VrRig.new()
+		add_child(vr)
+		vr.setup(vehicle, settings.seat_offset)
+		vr.camera.make_current()
+		scorer.popup.connect(func(t: String, _k: String) -> void: vr.show_popup(t))
 
 	input = DriverInput.new(vehicle)
 	hud = Hud.new()
@@ -90,6 +108,11 @@ func _physics_process(dt: float) -> void:
 	var on_track := vehicle.on_road_wheels >= 2
 	scorer.update(dt, vehicle.speed, vehicle.drift_angle, on_track, vehicle.wall_proximity, tracker.progress)
 	input.rumble(1.0)
+	if bool(settings.use_wheel):
+		ffb.send(vehicle.ffb_force, vehicle.ffb_damper, vehicle.ffb_spring)
+	if vr:
+		vr.score_label.text = (DriftScorer.format_points(scorer.chain_total()) + "  x%.1f" % scorer.multiplier) if scorer.chain_active else ""
+	_seat_adjust(dt)
 	# Clipping points: rear bumper passes through the ring while drifting.
 	var rear := vehicle.global_transform * Vector3(0, 0, float(vehicle.spec.length) * 0.5)
 	var front := vehicle.global_transform * Vector3(0, 0, -float(vehicle.spec.length) * 0.5)
@@ -106,6 +129,15 @@ func _physics_process(dt: float) -> void:
 		reset_car()
 
 
+func _seat_adjust(dt: float) -> void:
+	var d := Vector3(0, Input.get_axis("seat_down", "seat_up"), Input.get_axis("seat_forward", "seat_back"))
+	if d.length() > 0.0:
+		settings.seat_offset += d * 0.15 * dt
+		camera.seat_offset = settings.seat_offset
+		if vr:
+			vr.seat_offset = settings.seat_offset
+
+
 func _unhandled_input(ev: InputEvent) -> void:
 	if vehicle == null:
 		return
@@ -115,8 +147,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 	if get_tree().paused:
 		return
 	input.handle_event(ev)
-	if ev.is_action_pressed("camera"):
+	if ev.is_action_pressed("recenter_vr") and vr:
+		vr.recentre()
+	elif ev.is_action_pressed("camera") and not vr:
 		camera.cycle()
+		settings.camera_mode = camera.mode
 	elif ev.is_action_pressed("reset_car"):
 		reset_car()
 
@@ -131,7 +166,26 @@ func reset_car() -> void:
 	camera.snap()
 
 
+class PausedInput extends Node:
+	## Handles controller input while the tree is paused (VR has no 2D menu).
+	var game: Game
+
+	func _unhandled_input(ev: InputEvent) -> void:
+		if not get_tree().paused or game.vr == null:
+			return
+		if ev.is_action_pressed("camera"):
+			get_tree().paused = false
+			game.exit_requested.emit()
+		elif ev.is_action_pressed("reset_car"):
+			game._toggle_pause()
+			game.reset_car()
+
+
 func _build_pause_menu() -> void:
+	var pi := PausedInput.new()
+	pi.game = self
+	pi.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(pi)
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -168,9 +222,18 @@ func _build_pause_menu() -> void:
 		vb.add_child(b)
 
 
+func _exit_tree() -> void:
+	if vr:
+		vr.shutdown()
+	if settings:
+		settings.save_settings()
+
+
 func _toggle_pause() -> void:
 	get_tree().paused = not get_tree().paused
 	pause_menu.visible = get_tree().paused
+	if vr:
+		vr.set_paused(get_tree().paused)
 	if pause_menu.visible:
 		var st: Dictionary = build_result.stats
 		var lines := "%s\n%d hp · %d Nm · %d kg · %s\n\nScore %s · best chain %s\nlongest drift %.1fs · max angle %d°" % [

@@ -1,0 +1,18 @@
+{
+  "id": "mazda_6mt_nd",
+  "name": "Mazda ND 6-speed",
+  "gear_ratios": [
+    5.087,
+    2.991,
+    2.035,
+    1.594,
+    1.286,
+    1.0
+  ],
+  "final_drive": 2.866,
+  "reverse_ratio": 4.597,
+  "max_torque_nm": 260,
+  "mass_kg": 36,
+  "shift_time_s": 0.18,
+  "notes": "Very short 1st with a tall 2.87 final."
+}

@@ -11,12 +11,17 @@ static func button(text: String, cb: Callable, min_h := 46) -> Button:
 	return b
 
 
-static func label(text: String, size := 16, color := Color.WHITE) -> Label:
+static func label(text: String, size := 16, color := Color.WHITE, wrap := false) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Only paragraphs wrap. A wrapping label inside a row with no width of its
+	# own collapses to one character per line (the "vertical text" bug).
+	if wrap or text.length() > 70:
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.custom_minimum_size.x = 300
 	return l
 
 

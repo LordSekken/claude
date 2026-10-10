@@ -1,0 +1,33 @@
+{
+  "id": "miata_na_welded_grassroots",
+  "name": "NA Miata 1.8 - welded grassroots",
+  "chassis": "mazda_mx5_na",
+  "engine": "mazda_bp_ze",
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#f2f2f2",
+  "tune": {
+    "diff": {
+      "type": "welded"
+    },
+    "final_drive": 4.3,
+    "springs_front_n_mm": 45,
+    "springs_rear_n_mm": 35,
+    "arb_front_n_mm": 24,
+    "arb_rear_n_mm": 0,
+    "ride_height_mm": -35,
+    "steer_lock_deg": 48,
+    "ackermann": 0.4,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 40,
+    "tire_front": {
+      "compound": "sport",
+      "size": "205/50R15"
+    },
+    "tire_rear": {
+      "compound": "street",
+      "size": "195/50R15"
+    }
+  },
+  "notes": "Cheapest way in: NA8 1.8, welded diff, cheap coilovers, mild lock, hard rear tyres. Momentum car - keep it in the rev band."
+}

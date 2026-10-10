@@ -101,7 +101,7 @@ func setup(v: Vehicle, s: DriftScorer, t: TrackTracker, track_spec: Dictionary) 
 
 	_help = _label(15, Color(1, 1, 1, 0.6))
 	_pin(_help, Vector2(0, 1), Vector2(24, -34), Vector2(1100, 24))
-	_help.text = "WASD/Arrows drive · Space handbrake · E/Q shift · Shift clutch · C camera · R reset · Esc menu   |   Pad: RT/LT, A handbrake, B/X shift"
+	_help.text = "WASD/Arrows drive · Space handbrake · E/Q shift · Shift clutch · C camera · Z/X look · R reset · Esc menu   |   Pad: RT/LT, A handbrake, B/X shift, right stick look"
 	root.add_child(_help)
 
 	# Minimap.

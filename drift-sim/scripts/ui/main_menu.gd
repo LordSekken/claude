@@ -51,7 +51,7 @@ func _ready() -> void:
 			csel = i
 	_car_opt = UiUtil.option(cnames, csel, _on_car)
 	vb.add_child(UiUtil.row("Car", _car_opt, 120))
-	_car_info = UiUtil.label("", 15, Color(0.75, 0.8, 0.85))
+	_car_info = UiUtil.label("", 15, Color(0.75, 0.8, 0.85), true)
 	vb.add_child(_car_info)
 	_on_car(csel)
 	if app.external_track_model == "":
@@ -70,7 +70,7 @@ func _ready() -> void:
 		grid.add_child(b)
 	vb.add_child(grid)
 	vb.add_child(UiUtil.button("Quit", func() -> void: navigate.emit("quit")))
-	_error = UiUtil.label("", 16, Color(1, 0.4, 0.4))
+	_error = UiUtil.label("", 16, Color(1, 0.4, 0.4), true)
 	vb.add_child(_error)
 	drive.grab_focus.call_deferred()
 

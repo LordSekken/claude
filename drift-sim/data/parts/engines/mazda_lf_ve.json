@@ -1,0 +1,46 @@
+{
+  "id": "mazda_lf_ve",
+  "name": "Mazda LF-VE 2.0L MZR (NC, 167 hp)",
+  "mass_kg": 125,
+  "idle_rpm": 800,
+  "limiter_rpm": 7500,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      140
+    ],
+    [
+      2000,
+      165
+    ],
+    [
+      3000,
+      175
+    ],
+    [
+      4000,
+      185
+    ],
+    [
+      5000,
+      190
+    ],
+    [
+      6000,
+      182
+    ],
+    [
+      7000,
+      170
+    ],
+    [
+      7500,
+      155
+    ]
+  ],
+  "inertia": 0.13,
+  "displacement_l": 2.0,
+  "max_safe_rpm": 7700,
+  "notes": "NC2 6MT: 167 hp @ 7000, 140 lb-ft @ 5000."
+}

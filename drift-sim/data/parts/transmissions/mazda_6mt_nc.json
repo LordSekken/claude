@@ -1,0 +1,17 @@
+{
+  "id": "mazda_6mt_nc",
+  "name": "Mazda NC 6-speed",
+  "gear_ratios": [
+    3.709,
+    2.19,
+    1.536,
+    1.177,
+    1.0,
+    0.832
+  ],
+  "final_drive": 3.909,
+  "reverse_ratio": 3.603,
+  "max_torque_nm": 280,
+  "mass_kg": 40,
+  "shift_time_s": 0.18
+}

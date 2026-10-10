@@ -1,0 +1,42 @@
+{
+  "id": "mazda_bp_ze",
+  "name": "Mazda BP-ZE 1.8L (NA8, 133 hp)",
+  "mass_kg": 110,
+  "idle_rpm": 850,
+  "limiter_rpm": 7000,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      110
+    ],
+    [
+      2000,
+      130
+    ],
+    [
+      3000,
+      140
+    ],
+    [
+      4000,
+      148
+    ],
+    [
+      5500,
+      155
+    ],
+    [
+      6500,
+      144
+    ],
+    [
+      7000,
+      130
+    ]
+  ],
+  "inertia": 0.12,
+  "displacement_l": 1.8,
+  "max_safe_rpm": 7300,
+  "notes": "1996-97 NA8: 133 hp @ 6500, 114 lb-ft @ 5500."
+}

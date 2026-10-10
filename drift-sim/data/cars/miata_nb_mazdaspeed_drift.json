@@ -1,0 +1,38 @@
+{
+  "id": "miata_nb_mazdaspeed_drift",
+  "name": "NB Mazdaspeed Miata - drift spec",
+  "chassis": "mazda_mx5_nb",
+  "engine": "mazda_bp_turbo_mazdaspeed",
+  "transmission": "mazda_6mt_nb",
+  "drivetrain": null,
+  "color": "#2a2a2e",
+  "tune": {
+    "boost_bar": 0.85,
+    "power_mult": 1.04,
+    "final_drive": 4.1,
+    "diff": {
+      "type": "lsd",
+      "power": 0.75,
+      "coast": 0.5,
+      "preload_nm": 80
+    },
+    "springs_front_n_mm": 55,
+    "springs_rear_n_mm": 42,
+    "arb_front_n_mm": 26,
+    "arb_rear_n_mm": 5,
+    "ride_height_mm": -40,
+    "steer_lock_deg": 55,
+    "ackermann": 0.3,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 35,
+    "tire_front": {
+      "compound": "sport",
+      "size": "205/45R17"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "215/45R17"
+    }
+  },
+  "notes": "Factory turbo NB with the boost turned up, 2-way, coilovers and lock."
+}

@@ -1,0 +1,46 @@
+{
+  "id": "mazda_bp_z3",
+  "name": "Mazda BP-Z3 1.8L VVT (NB2, 142 hp)",
+  "mass_kg": 112,
+  "idle_rpm": 850,
+  "limiter_rpm": 7200,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      115
+    ],
+    [
+      2000,
+      140
+    ],
+    [
+      3000,
+      155
+    ],
+    [
+      4000,
+      165
+    ],
+    [
+      5000,
+      170
+    ],
+    [
+      6000,
+      160
+    ],
+    [
+      7000,
+      145
+    ],
+    [
+      7200,
+      138
+    ]
+  ],
+  "inertia": 0.12,
+  "displacement_l": 1.8,
+  "max_safe_rpm": 7400,
+  "notes": "2001-05 NB2: 142 hp @ 7000, 125 lb-ft @ 5000."
+}

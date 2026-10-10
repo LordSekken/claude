@@ -14,6 +14,7 @@ var _capture_timer := 0.0
 var _monitor: Label
 var _status: Label
 var _bind_labels := {}
+var _ffb_status: Label
 
 
 func _ready() -> void:
@@ -51,7 +52,7 @@ func _ready() -> void:
 
 	vb.add_child(HSeparator.new())
 	vb.add_child(UiUtil.label("Controllers", 22, Color(1, 0.8, 0.25)))
-	vb.add_child(UiUtil.label("Xbox / XInput pads work out of the box: left stick steer, RT gas, LT brake, A handbrake, B/X shift up/down, LB clutch, Y camera, Back reset, Start pause.", 14, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("Xbox / XInput pads work out of the box: left stick steer, RT gas, LT brake, A handbrake, B/X shift up/down, Y camera, right-stick look / recentre VR, Back reset, Start pause.", 14, Color(0.75, 0.75, 0.8)))
 	var pads := Input.get_connected_joypads()
 	var names := []
 	for p in pads:
@@ -71,7 +72,7 @@ func _ready() -> void:
 	rot.suffix = "°"
 	rot.value_changed.connect(func(v: float) -> void: settings.wheel_rotation_deg = v)
 	vb.add_child(UiUtil.row("Wheel rotation (set the same in G HUB)", rot, 300))
-	vb.add_child(UiUtil.label("Wheel setup: click a Bind button, then move that control all the way (turn the wheel to the RIGHT for steering) and release. Tip for the G920: Drift Lab doesn't drive force feedback yet, so turn on G HUB's 'centering spring' for a self-centering wheel.", 14, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("Wheel setup: click a Bind button, then move that control all the way (turn the wheel to the RIGHT for steering) and release. In G HUB, turn OFF the 'centering spring' so Drift Lab's force feedback can do the work.", 14, Color(0.75, 0.75, 0.8)))
 	var grid := GridContainer.new()
 	grid.columns = 3
 	for b in [["steer", "Steering (turn right)"], ["throttle", "Throttle pedal"], ["brake", "Brake pedal"], ["clutch", "Clutch pedal"], ["handbrake", "Handbrake (axis)"]]:
@@ -87,7 +88,41 @@ func _ready() -> void:
 		_bind_labels["btn:" + b[0]] = l
 		grid.add_child(l)
 	vb.add_child(grid)
-	_status = UiUtil.label("", 18, Color(1, 0.85, 0.3))
+	vb.add_child(HSeparator.new())
+	vb.add_child(UiUtil.label("Force feedback (wheels)", 22, Color(1, 0.8, 0.25)))
+	vb.add_child(UiUtil.label("Self-aligning torque from the front tyres: the wheel goes light when the fronts let go, snaps back on a transition, and kicks when you hit a wall. Runs through ffb_helper.exe (shipped next to DriftLab.exe).", 14, Color(0.75, 0.75, 0.8)))
+	var ffb: Node = get_node("/root/ForceFeedback")
+	var ffb_on := CheckBox.new()
+	ffb_on.text = "Enable force feedback"
+	ffb_on.button_pressed = bool(settings.ffb_enabled)
+	ffb_on.toggled.connect(func(on: bool) -> void:
+		settings.ffb_enabled = on
+		if on:
+			ffb.start()
+		else:
+			ffb.stop())
+	vb.add_child(ffb_on)
+	vb.add_child(UiUtil.row("Strength", UiUtil.slider(0, 1.5, 0.05, float(settings.ffb_gain), func(v: float) -> void: settings.ffb_gain = v), 280))
+	vb.add_child(UiUtil.row("Damping (weight)", UiUtil.slider(0, 2, 0.05, float(settings.ffb_damper), func(v: float) -> void: settings.ffb_damper = v), 280))
+	var ffb_row := HBoxContainer.new()
+	ffb_row.add_child(UiUtil.button("Test (pulls left, then right)", func() -> void: ffb.test(), 36))
+	_ffb_status = UiUtil.label("", 14, Color(0.6, 0.9, 0.6), true)
+	ffb_row.add_child(_ffb_status)
+	vb.add_child(ffb_row)
+
+	vb.add_child(HSeparator.new())
+	vb.add_child(UiUtil.label("View & VR", 22, Color(1, 0.8, 0.25)))
+	vb.add_child(UiUtil.row("Default camera", UiUtil.option(["Chase", "Close chase", "Bonnet", "Cockpit (first person)"], int(settings.camera_mode), func(i: int) -> void: settings.camera_mode = i), 280))
+	var apex := CheckBox.new()
+	apex.text = "Cockpit view glances into the drift (desktop only)"
+	apex.button_pressed = bool(settings.look_to_apex)
+	apex.toggled.connect(func(on: bool) -> void: settings.look_to_apex = on)
+	vb.add_child(apex)
+	vb.add_child(UiUtil.button("Reset seat position", func() -> void:
+		settings.seat_offset = Vector3.ZERO
+		_status.text = "Seat reset.", 36))
+	vb.add_child(UiUtil.label("VR (Quest 2 etc.): connect with Quest Link, Air Link or Virtual Desktop (set it as the OpenXR runtime), then start 'Drift Lab VR.bat'. In the car: V or right-stick click recentres your view; numpad 8/2 moves the seat forward/back and 9/3 up/down. Menus show on the PC monitor.", 14, Color(0.75, 0.75, 0.8)))
+	_status = UiUtil.label("", 18, Color(1, 0.85, 0.3), true)
 	vb.add_child(_status)
 	vb.add_child(UiUtil.label("Live axes", 16, Color(1, 0.8, 0.25)))
 	_monitor = UiUtil.label("", 13, Color(0.8, 0.8, 0.85))
@@ -107,6 +142,8 @@ func _desc(what: String) -> String:
 	var bind: Dictionary = settings.get(what + "_binding")
 	if bind.is_empty():
 		return "-"
+	if what == "steer" and int(bind.get("device", -1)) < 0:
+		return "not bound yet"
 	if what == "steer":
 		return "axis %d on #%d%s" % [bind.axis, bind.device, " (inverted)" if bind.get("invert", false) else ""]
 	return "axis %d on #%d  (%.2f -> %.2f)" % [bind.axis, bind.device, float(bind.released), float(bind.pressed)]
@@ -140,6 +177,8 @@ func _input(ev: InputEvent) -> void:
 
 
 func _process(dt: float) -> void:
+	if _ffb_status:
+		_ffb_status.text = str(get_node("/root/ForceFeedback").status)
 	var txt := ""
 	for dev in Input.get_connected_joypads():
 		var parts := []

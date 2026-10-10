@@ -279,6 +279,7 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 		"engine_name": str(eng.name),
 		"transmission_name": str(trans.name),
 		"chassis_name": str(ch.name),
+		"driver_side": str(ch.get("driver_side", "left")),
 	}
 	var stats := compute_stats(spec)
 	if stats.hp_per_tonne > 330.0:

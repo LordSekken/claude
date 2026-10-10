@@ -1,0 +1,38 @@
+{
+  "id": "miata_na_bp_turbo",
+  "name": "NA Miata - BP turbo, NB 6-speed",
+  "chassis": "mazda_mx5_na",
+  "engine": "mazda_bp_turbo_mazdaspeed",
+  "transmission": "mazda_6mt_nb",
+  "drivetrain": null,
+  "color": "#0f0f10",
+  "tune": {
+    "boost_bar": 0.9,
+    "power_mult": 1.05,
+    "final_drive": 4.1,
+    "diff": {
+      "type": "lsd",
+      "power": 0.8,
+      "coast": 0.55,
+      "preload_nm": 90
+    },
+    "springs_front_n_mm": 60,
+    "springs_rear_n_mm": 45,
+    "arb_front_n_mm": 28,
+    "arb_rear_n_mm": 4,
+    "ride_height_mm": -45,
+    "steer_lock_deg": 56,
+    "ackermann": 0.25,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 60,
+    "tire_front": {
+      "compound": "sport",
+      "size": "205/45R16"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "215/45R16"
+    }
+  },
+  "notes": "Classic recipe: BP turbo at ~0.9 bar (~230 hp), NB 6-speed, 2-way LSD, angle kit. The NB box is the weak point past ~260 Nm."
+}

@@ -1,0 +1,55 @@
+{
+  "id": "mazda_bp_turbo_mazdaspeed",
+  "name": "Mazda BP-4W turbo (2004-05 Mazdaspeed MX-5, 178 hp)",
+  "mass_kg": 125,
+  "idle_rpm": 850,
+  "limiter_rpm": 6800,
+  "aspiration": "turbo",
+  "torque_curve": [
+    [
+      1000,
+      120
+    ],
+    [
+      2000,
+      165
+    ],
+    [
+      2500,
+      195
+    ],
+    [
+      3000,
+      215
+    ],
+    [
+      3500,
+      225
+    ],
+    [
+      4500,
+      225
+    ],
+    [
+      5500,
+      215
+    ],
+    [
+      6000,
+      208
+    ],
+    [
+      6800,
+      180
+    ]
+  ],
+  "boost_bar": 0.6,
+  "max_boost_bar": 1.0,
+  "spool_rpm": 2800,
+  "turbo_lag_s": 0.4,
+  "inertia": 0.12,
+  "displacement_l": 1.8,
+  "max_safe_rpm": 7000,
+  "turbo": "IHI VF51",
+  "notes": "178 hp @ 6000, 166 lb-ft @ 4500 at ~8.5 psi. BP internals hold ~1 bar."
+}

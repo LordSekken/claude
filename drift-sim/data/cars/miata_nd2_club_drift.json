@@ -1,0 +1,35 @@
+{
+  "id": "miata_nd2_club_drift",
+  "name": "ND2 Miata - club drift",
+  "chassis": "mazda_mx5_nd",
+  "engine": null,
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#b5121b",
+  "tune": {
+    "power_mult": 1.04,
+    "diff": {
+      "type": "lsd",
+      "power": 0.8,
+      "coast": 0.6,
+      "preload_nm": 100
+    },
+    "springs_front_n_mm": 55,
+    "springs_rear_n_mm": 45,
+    "arb_front_n_mm": 28,
+    "arb_rear_n_mm": 5,
+    "ride_height_mm": -35,
+    "steer_lock_deg": 55,
+    "ackermann": 0.25,
+    "hydro_handbrake": true,
+    "tire_front": {
+      "compound": "sport",
+      "size": "215/45R17"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "225/40R17"
+    }
+  },
+  "notes": "ND2 with a 2-way, intake/tune, coilovers and an angle kit. Revs to 7500 - keep it pinned."
+}

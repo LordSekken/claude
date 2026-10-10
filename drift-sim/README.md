@@ -6,13 +6,16 @@ A drift simulator for Windows (Godot 4). It is built around three things:
 - **Tracks from pictures.** Trace a satellite/map screenshot or a sketch offline. Or hand *any* photo of a place to Claude, which designs a drift course from it, checks it, looks at a render of what it built and refines it.
 - **Forza-style drift scoring.** Chains, multipliers, transitions, clipping points, wall proximity, judged zones with star ratings.
 
-Out of the box it plays with keyboard, Xbox-style controllers and steering wheels (e.g. a Logitech G920).
+Out of the box it plays with keyboard, Xbox-style controllers and steering wheels with **force feedback** (e.g. a Logitech G920), from a **first-person cockpit**, on a monitor or in **VR** (Quest 2 etc. via OpenXR).
 
 ---
 
 ## Getting it
 
-**Windows build:** every push builds `DriftLab.exe`. Open the repo's **Actions** tab, pick the latest *"Drift Lab - test & Windows build"* run, and download the **DriftLab-windows** artifact. Unzip it and run `DriftLab.exe`. No install needed.
+**Windows build:** every push builds it. Open the repo's **Actions** tab, pick the latest *"Drift Lab - test & Windows build"* run, and download the **DriftLab-windows** artifact. Unzip it and keep the files together:
+- `DriftLab.exe` is the game.
+- `Drift Lab VR.bat` starts it in VR.
+- `ffb_helper.exe` + `SDL3.dll` handle wheel force feedback.
 
 **From source:** install [Godot 4.4](https://godotengine.org/download) (standard build, not .NET). Open `drift-sim/project.godot` and press F5.
 
@@ -31,7 +34,13 @@ Out of the box it plays with keyboard, Xbox-style controllers and steering wheel
 
 The menus work with a controller too (D-pad/stick + A).
 
-**Setting up a wheel (G920):** go to *Settings & Controls*, tick *Use a steering wheel*, then click **Bind** for each control and move it once: turn the wheel right, press each pedal, press each paddle. Drift Lab records which axis moved and how far, so any pedal direction or range works. Set the wheel rotation to match G HUB (900° is a good default for drifting). Force feedback isn't driven yet (see Roadmap), so turn on G HUB's *centering spring* for now.
+**Setting up a wheel (G920):** go to *Settings & Controls*, tick *Use a steering wheel*, then click **Bind** for each control and move it once: turn the wheel right, press each pedal, press each paddle. Drift Lab records which axis moved and how far, so any pedal direction or range works. Set the wheel rotation to match G HUB (900° is a good default for drifting). In G HUB, turn **off** the centering spring.
+
+**Force feedback:** you feel self-aligning torque from the front tyres. The wheel goes light as the fronts pass their grip limit and snaps back through a transition. Kerbs rumble, grass and gravel shake, and wall hits kick. Settings has strength and damping sliders and a **Test** button that pulls the wheel left, then right; the status line next to it shows whether a wheel was found. Godot can't drive DirectInput force feedback itself, so the game streams forces to `ffb_helper.exe` (SDL3, source in `native/ffb/`). It cuts the force within 250 ms if the game stops, and exits when the game closes. Xbox controllers get rumble instead.
+
+**First person & VR:** the cockpit camera is the default (C cycles chase / close chase / bonnet / cockpit). On a monitor the view glances into the drift automatically; Z/X or the right stick look around manually. Numpad 8/2 moves the seat forward/back and 9/3 up/down.
+
+For **Quest 2**: connect with Quest Link, Air Link or Virtual Desktop (OpenXR runtime active), then run `Drift Lab VR.bat`. Pick your car and track on the PC monitor and press Drive; you're then in the driver's seat. V or right-stick click recentres your view. Score and popups float in front of the car. In VR, Start pauses, and while paused Back resets the car and Y quits to the menu.
 
 **Assists** (Settings): auto clutch and automatic gearbox are on by default for couch play. *Steering assist* only applies to pad/keyboard: when you let go of the stick, the front wheels settle toward the direction of travel, the way caster does on a real car. That makes counter-steer manageable without a wheel. Set it to 0 for raw steering.
 
@@ -43,9 +52,11 @@ boost, ECU/bolt-ons, rev limit, final drive, diff (open / clutch LSD with power/
 Swaps are physical: changing the engine changes mass and front/rear balance (by where the engine sits relative to the front axle). A drivetrain conversion adds or removes the front diff, prop shaft and transfer case.
 
 **Included parts** (real published specs; suspension rates and CG heights are estimates):
-- Chassis: 1998 Subaru Legacy Outback (BG9), Nissan 240SX/Silvia S14, BMW E36 328i, Toyota AE86, Mazda MX-5 NA
-- Engines: Subaru EJ25D, EJ205 (02-05 WRX), EJ257 (STI), Nissan KA24DE, SR20DET, Toyota 2JZ-GTE, 4A-GE, BMW M52B28, Mazda B6ZE, Chevy LS3
-- Gearboxes: Subaru TY754 5MT, TY856 6MT (STI), Nissan FS5W71C, BMW ZF S5D, Toyota T50, R154, Mazda M5OD
+- Chassis: 1998 Subaru Legacy Outback (BG9), Nissan 240SX/Silvia S14, BMW E36 328i, Toyota AE86, Mazda MX-5 NA / NB / NC / ND2
+- Engines: Subaru EJ25D, EJ205 (02-05 WRX), EJ257 (STI), Nissan KA24DE, SR20DET, Toyota 2JZ-GTE, 4A-GE, BMW M52B28, Mazda B6ZE, BP-ZE, BP-Z3, BP turbo (Mazdaspeed), LF-VE (NC), SKYACTIV-G 2.0 (ND2), Chevy LS3
+- Gearboxes: Subaru TY754 5MT, TY856 6MT (STI), Nissan FS5W71C, BMW ZF S5D, Toyota T50, R154, Mazda M5OD, NB/NC/ND 6-speeds
+
+**Miatas:** NA 1.8 welded grassroots, NA BP-turbo with NB 6-speed, NB Mazdaspeed drift spec, NC welded street drifter, ND2 club drift, and the NA LS3 swap.
 
 **Featured: '98 Outback, EJ205 swap, RWD drift build.** The budget Subaru drift recipe: 02-05 WRX EJ205 + STI 6-speed, DCCD locked and front axles pulled for RWD, welded R180, ~1.15 bar on a tune (≈266 hp), coilovers ~95 mm lower than Outback height, 58° angle kit, hydro handbrake, interior stripped. Compare it with the bone-stock Outback, which (correctly) refuses to slide on the handbrake because the viscous centre diff ties the rear wheels to the front.
 
@@ -98,7 +109,8 @@ It aims for *believable and consistent* rather than AC-level detail. There's no 
 
 ## Roadmap / known limits
 
-- Force feedback for wheels. Godot has no DirectInput FFB API, so this needs a small native plugin (SDL3 haptic). The self-aligning torque is already computed from front-tyre forces and only needs plumbing.
+- Force feedback tuning against more wheels (tested in code and under Wine; needs real-wheel feel tuning).
+- VR: in-headset menus (for now menus are on the monitor).
 - Load .glb car models (e.g. CC-licensed models) instead of the procedural body.
 - Ghosts/replays, tandem AI, online leaderboards.
 - Tyre temperature, camber/caster effects.
@@ -108,7 +120,7 @@ It aims for *believable and consistent* rather than AC-level detail. There's no 
 ```
 cd drift-sim
 godot --headless --path . --import
-godot --headless --path . -s tests/run_tests.gd        # 118 checks: tyres, builds, tracks, tracer, scoring, AC import/export, physics, game smoke
+godot --headless --path . -s tests/run_tests.gd        # 134 checks: tyres, builds, tracks, tracer, scoring, AC import/export, physics, game smoke
 xvfb-run godot --path . --rendering-method gl_compatibility -s tests/screenshots.gd -- /tmp/shots
 ```
 

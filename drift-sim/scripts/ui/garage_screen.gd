@@ -65,7 +65,7 @@ func _ready() -> void:
 		if _save():
 			navigate.emit("drive")))
 	root.add_child(head)
-	_status = UiUtil.label("", 15, Color(0.6, 1, 0.6))
+	_status = UiUtil.label("", 15, Color(0.6, 1, 0.6), true)
 	root.add_child(_status)
 
 	var cols := HBoxContainer.new()

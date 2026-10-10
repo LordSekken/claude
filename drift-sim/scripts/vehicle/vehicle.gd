@@ -85,6 +85,13 @@ var drift_angle := 0.0   # body slip angle in degrees (signed)
 var wall_contact := false
 var wall_proximity := INF
 var on_road_wheels := 0
+# Force feedback output (read by the game and sent to the wheel).
+var ffb_force := 0.0     # -1..1, + pushes the steering wheel right
+var ffb_damper := 0.0
+var ffb_spring := 0.0
+var _ffb_jolt := 0.0
+var _ffb_jolt_t := 0.0
+var _ffb_time := 0.0
 
 var _gears: Array = []
 var _prev_velocity := Vector3.ZERO
@@ -259,6 +266,7 @@ func _physics_process(dt: float) -> void:
 	else:
 		drift_angle = 0.0
 	_update_contacts(space, xf, dt)
+	_compute_ffb(dt)
 	_prev_velocity = lv
 
 
@@ -541,6 +549,11 @@ func _update_contacts(space: PhysicsDirectSpaceState3D, xf: Transform3D, _dt: fl
 	var dv := (linear_velocity - _prev_velocity).length()
 	if wall_contact and dv > 2.2:
 		hard_impact.emit(dv)
+	if wall_contact and dv > 0.8:
+		# Kick the wheel away from the side that hit.
+		var lateral := (linear_velocity - _prev_velocity).dot(global_basis.x)
+		_ffb_jolt = clampf(lateral * 0.25, -0.9, 0.9)
+		_ffb_jolt_t = 0.09
 	# Wall proximity from the rear bumper corners (tail-to-the-wall bonus).
 	var q := PhysicsRayQueryParameters3D.new()
 	q.collision_mask = 2
@@ -556,3 +569,49 @@ func _update_contacts(space: PhysicsDirectSpaceState3D, xf: Transform3D, _dt: fl
 			var hit := space.intersect_ray(q)
 			if not hit.is_empty():
 				wall_proximity = minf(wall_proximity, corner.distance_to(hit.position))
+
+
+## Steering-rack torque from the front tyres:
+##  - self-aligning torque = lateral force x (pneumatic trail + caster trail).
+##    Pneumatic trail collapses past the peak slip angle, so the wheel goes
+##    light as the front tyres let go - the cue drifters steer by.
+##  - kerb / rough-surface rumble, wall-impact jolts, low-speed damping.
+func _compute_ffb(dt: float) -> void:
+	_ffb_time += dt
+	var front_load := 0.0
+	var torque := 0.0
+	var rumble := 0.0
+	for wh in wheels:
+		if not wh.front:
+			continue
+		front_load += wh.fz
+		if not wh.contact:
+			continue
+		var peak := wh.tire.peak_slip_angle
+		var pneumatic := 0.035 * maxf(0.0, 1.0 - absf(wh.slip_angle) / (peak * 1.7))
+		var caster := 0.022
+		torque += -wh.fy * (pneumatic + caster)
+		if wh.surface == "kerb":
+			rumble += sin(_ffb_time * TAU * 22.0) * 0.12 * clampf(speed / 15.0, 0.0, 1.0)
+		elif wh.surface != "asphalt" and wh.surface != "concrete":
+			rumble += (randf() - 0.5) * 0.12 * clampf(speed / 10.0, 0.0, 1.0)
+	var static_front := mass * 9.81 * (1.0 - float(spec.com_from_front) / float(spec.wheelbase))
+	var norm := maxf(static_front, 1000.0) * 1.1 * 0.057
+	var f := torque / norm
+	if _ffb_jolt_t > 0.0:
+		_ffb_jolt_t -= dt
+		f += _ffb_jolt
+	ffb_force = clampf(f + rumble, -1.0, 1.0)
+	# Heavier at parking speed, light damping when moving.
+	ffb_damper = lerpf(0.45, 0.08, clampf(speed / 8.0, 0.0, 1.0))
+	ffb_spring = 0.0
+
+
+## Driver eye point in the car's local space (left-hand drive unless the
+## chassis says "driver_side": "right"), plus the user's seat adjustment.
+func seat_local(offset := Vector3.ZERO) -> Vector3:
+	var rmean := (float(spec.radius_f) + float(spec.radius_r)) * 0.5
+	var side := 1.0 if str(spec.get("driver_side", "left")) == "right" else -1.0
+	var eye_h := float(spec.height) * 0.70 + float(spec.ride_offset) * 0.6  # above ground
+	var x := side * float(spec.width) * 0.21
+	return Vector3(x, -rmean + eye_h, float(spec.wheelbase) * 0.06) + offset

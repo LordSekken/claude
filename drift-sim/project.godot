@@ -39,3 +39,10 @@ anti_aliasing/quality/msaa_3d=2
 
 Settings="*res://scripts/core/settings.gd"
 App="*res://scripts/core/app.gd"
+ForceFeedback="*res://scripts/core/force_feedback.gd"
+
+[xr]
+
+openxr/enabled=false
+openxr/startup_alert=false
+shaders/enabled=true

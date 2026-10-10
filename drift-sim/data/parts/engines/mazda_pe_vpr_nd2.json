@@ -1,0 +1,46 @@
+{
+  "id": "mazda_pe_vpr_nd2",
+  "name": "Mazda SKYACTIV-G 2.0 PE-VPR (ND2, 181 hp)",
+  "mass_kg": 120,
+  "idle_rpm": 750,
+  "limiter_rpm": 7500,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      160
+    ],
+    [
+      2000,
+      185
+    ],
+    [
+      3000,
+      198
+    ],
+    [
+      4000,
+      205
+    ],
+    [
+      5000,
+      200
+    ],
+    [
+      6000,
+      192
+    ],
+    [
+      7000,
+      184
+    ],
+    [
+      7500,
+      170
+    ]
+  ],
+  "inertia": 0.12,
+  "displacement_l": 2.0,
+  "max_safe_rpm": 7600,
+  "notes": "ND2: 181 hp @ 7000, 151 lb-ft @ 4000."
+}

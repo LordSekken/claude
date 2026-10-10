@@ -55,6 +55,15 @@ jobs:
           cp README.md build/windows/README.md
           ls -la build/windows
 
+      - name: Build force-feedback helper (ffb_helper.exe + SDL3.dll)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q gcc-mingw-w64-x86-64
+          curl -sSL -o /tmp/sdl3.tgz https://github.com/libsdl-org/SDL/releases/download/release-3.2.8/SDL3-devel-3.2.8-mingw.tar.gz
+          tar xzf /tmp/sdl3.tgz -C /tmp
+          SDL3_DIR=/tmp/SDL3-3.2.8/x86_64-w64-mingw32 native/ffb/build.sh build/windows
+          cp "native/Drift Lab VR.bat" build/windows/
+          ls -la build/windows
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:

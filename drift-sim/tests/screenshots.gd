@@ -50,6 +50,7 @@ func _init() -> void:
 	var g: Game = main.current
 	var t := 0.0
 	var shot_times := {2.5: "06_drive_start", 7.6: "07_drift", 8.6: "08_drift_b", 10.5: "09_drift_c"}
+	g.camera.mode = ChaseCamera.Mode.CHASE
 	g.input = null
 	while t < 11.0:
 		var v := g.vehicle
@@ -72,6 +73,10 @@ func _init() -> void:
 		g.scorer.update(1.0 / 60.0, v.speed, v.drift_angle, v.on_road_wheels >= 2, v.wall_proximity, g.tracker.progress)
 		await process_frame
 		t += 1.0 / 60.0
+		if absf(t - 3.0) < 0.5 / 60.0 or absf(t - 9.3) < 0.5 / 60.0:
+			g.camera.mode = ChaseCamera.Mode.COCKPIT
+			await _shot("10_cockpit_%d" % int(t))
+			g.camera.mode = ChaseCamera.Mode.CHASE
 		for k: float in shot_times.keys():
 			if absf(t - k) < 0.5 / 60.0:
 				await _shot(shot_times[k])

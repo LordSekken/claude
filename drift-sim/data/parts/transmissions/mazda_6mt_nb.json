@@ -1,0 +1,18 @@
+{
+  "id": "mazda_6mt_nb",
+  "name": "Mazda NB 6-speed (Aisin AZ6)",
+  "gear_ratios": [
+    3.76,
+    2.269,
+    1.645,
+    1.257,
+    1.0,
+    0.843
+  ],
+  "final_drive": 3.909,
+  "reverse_ratio": 3.564,
+  "max_torque_nm": 260,
+  "mass_kg": 38,
+  "shift_time_s": 0.18,
+  "notes": "Common NA/NB swap box. Mazdaspeed used a 4.10 final."
+}

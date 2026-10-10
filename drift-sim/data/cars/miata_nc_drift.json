@@ -1,0 +1,33 @@
+{
+  "id": "miata_nc_drift",
+  "name": "NC Miata - welded street drifter",
+  "chassis": "mazda_mx5_nc",
+  "engine": null,
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#8c8f94",
+  "tune": {
+    "diff": {
+      "type": "welded"
+    },
+    "final_drive": 4.1,
+    "springs_front_n_mm": 60,
+    "springs_rear_n_mm": 48,
+    "arb_front_n_mm": 30,
+    "arb_rear_n_mm": 6,
+    "ride_height_mm": -45,
+    "steer_lock_deg": 54,
+    "ackermann": 0.3,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 30,
+    "tire_front": {
+      "compound": "sport",
+      "size": "225/45R17"
+    },
+    "tire_rear": {
+      "compound": "street",
+      "size": "215/45R17"
+    }
+  },
+  "notes": "NC with a welded diff, 4.10 final for revs, coilovers and lock. Bigger and more stable than NA/NB."
+}

@@ -1,14 +1,18 @@
 class_name ChaseCamera
 extends Camera3D
-## Drift-friendly chase camera: follows the direction of travel (so you see
-## the car's angle), plus bumper and cockpit views.
+## Cameras: chase (follows the direction of travel so you see the angle),
+## close chase, bonnet, and first-person cockpit. In the cockpit the view
+## can glance into the drift (desktop only - in VR your head does that).
 
-enum Mode { CHASE, CHASE_CLOSE, LOCKED, HOOD }
+enum Mode { CHASE, CHASE_CLOSE, HOOD, COCKPIT }
 var target: Vehicle
-var mode := Mode.CHASE
+var mode := Mode.COCKPIT
+var look_to_apex := true
+var seat_offset := Vector3.ZERO
 var _pos := Vector3.ZERO
 var _look := Vector3.ZERO
 var _yaw_dir := Vector3.FORWARD
+var _glance := 0.0
 
 
 func cycle() -> void:
@@ -31,7 +35,6 @@ func _physics_process(dt: float) -> void:
 	var fwd := target.forward()
 	var vel := target.linear_velocity
 	vel.y = 0.0
-	# Blend heading toward velocity direction while moving.
 	var desired := fwd
 	if vel.length() > 4.0:
 		desired = fwd.slerp(vel.normalized(), 0.65).normalized()
@@ -46,11 +49,21 @@ func _physics_process(dt: float) -> void:
 			global_position = _pos
 			look_at(_look, Vector3.UP)
 			fov = 70.0 + clampf(target.speed * 0.15, 0.0, 12.0)
-		Mode.LOCKED:
-			global_position = target.global_transform * Vector3(0, 1.8, 6.0)
-			look_at(target.global_transform * Vector3(0, 0.6, -3.0), Vector3.UP)
-			fov = 70.0
 		Mode.HOOD:
-			var h := float(target.spec.height) * 0.62
-			global_transform = target.global_transform * Transform3D(Basis(), Vector3(-0.35, h - 0.25, 0.1))
+			var h := float(target.spec.height) * 0.45
+			global_transform = target.global_transform * Transform3D(Basis(), Vector3(0, h - 0.2, -float(target.spec.length) * 0.3))
 			fov = 75.0
+		Mode.COCKPIT:
+			var glance_target := 0.0
+			if look_to_apex and target.speed > 5.0:
+				glance_target = clampf(-deg_to_rad(target.drift_angle) * 0.55, -0.8, 0.8)
+			var manual := Input.get_action_strength("look_right") - Input.get_action_strength("look_left")
+			var pads := Input.get_connected_joypads()
+			if pads.size() > 0 and absf(Input.get_joy_axis(pads[0], JOY_AXIS_RIGHT_X)) > 0.2:
+				manual = Input.get_joy_axis(pads[0], JOY_AXIS_RIGHT_X)
+			if absf(manual) > 0.05:
+				glance_target = -manual * 1.4
+			_glance = lerpf(_glance, glance_target, 1.0 - exp(-6.0 * dt))
+			var basis := Basis(Vector3.UP, _glance) * Basis(Vector3.RIGHT, deg_to_rad(-4.0))
+			global_transform = target.global_transform * Transform3D(basis, target.seat_local(seat_offset))
+			fov = 78.0
