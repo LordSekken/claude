@@ -38,7 +38,7 @@ func _ready() -> void:
 	_track_opt = UiUtil.option(names, sel, _on_track)
 	vb.add_child(UiUtil.row("Track", _track_opt, 120))
 	var ext_row := HBoxContainer.new()
-	ext_row.add_child(UiUtil.button("Load track model (.glb / .fbx / converted AC track)...", _load_external))
+	ext_row.add_child(UiUtil.button("Load track model (AC .kn5 / .glb / .fbx)...", _load_external))
 	vb.add_child(ext_row)
 
 	_cars = app.list_cars()
@@ -106,7 +106,7 @@ func _on_car(i: int) -> void:
 
 
 func _load_external() -> void:
-	UiUtil.file_dialog(self, PackedStringArray(["*.glb, *.gltf, *.fbx ; Track models"]), func(path: String) -> void:
+	UiUtil.file_dialog(self, PackedStringArray(["*.kn5, *.glb, *.gltf, *.fbx ; Track models"]), func(path: String) -> void:
 		var app: Node = get_node("/root/App")
 		app.external_track_model = path
 		navigate.emit("menu"))

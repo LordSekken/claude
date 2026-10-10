@@ -40,6 +40,11 @@ static func load_model(path: String) -> Dictionary:
 		err = doc.append_from_file(path, state)
 		if err == OK:
 			scene = doc.generate_scene(state)
+	elif ext == "kn5":
+		var kr := Kn5Loader.load_model(path, "", false)
+		if not kr.ok:
+			return {"ok": false, "error": "Could not load %s: %s" % [path, kr.error]}
+		scene = kr.root
 	elif ext == "fbx":
 		var fdoc := FBXDocument.new()
 		var fstate := FBXState.new()
@@ -47,7 +52,7 @@ static func load_model(path: String) -> Dictionary:
 		if err == OK:
 			scene = fdoc.generate_scene(fstate)
 	else:
-		return {"ok": false, "error": "Unsupported format .%s (use .glb, .gltf or .fbx)" % ext}
+		return {"ok": false, "error": "Unsupported format .%s (use .kn5, .glb, .gltf or .fbx)" % ext}
 	if scene == null:
 		return {"ok": false, "error": "Could not load %s (error %d)" % [path, err]}
 
@@ -94,9 +99,11 @@ static func load_model(path: String) -> Dictionary:
 	for nm in ["AC_START_0", "AC_HOTLAP_START_0", "AC_PIT_0"]:
 		var n := scene.find_child(nm, true, false)
 		if n is Node3D:
-			# AC cars face the dummy's +Z; ours face -Z.
 			var gt := _global_xform(n as Node3D, scene)
-			start = Transform3D(gt.basis.orthonormalized().rotated(Vector3.UP, PI), gt.origin + Vector3.UP * 0.8)
+			var b := gt.basis.orthonormalized()
+			if ext != "kn5":
+				b = b.rotated(Vector3.UP, PI)  # glTF/FBX keep AC's +Z-forward dummies
+			start = Transform3D(b, gt.origin + Vector3.UP * 0.8)
 			break
 	if count == 0:
 		return {"ok": false, "error": "No meshes found in the model."}

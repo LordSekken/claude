@@ -1,13 +1,12 @@
 class_name AcTrackExporter
 extends RefCounted
 ## Exports a Drift Lab track as an Assetto Corsa track mod skeleton:
-##   <id>/<id>.glb            geometry with AC physics names (1ROAD_*, 1KERB_*,
+##   <id>/<id>.kn5            geometry with AC physics names (1ROAD_*, 1KERB_*,
 ##                             1GRASS_*, 1WALL_*) + AC_START_0, AC_PIT_0,
 ##                             AC_HOTLAP_START_0, AC_TIME_0_L/R dummies
 ##   <id>/ui/ui_track.json, ui/outline.png, ui/preview.png
 ##   <id>/map.png, data/map.ini, data/surfaces.ini
-##   <id>/HOW_TO_FINISH.txt   glb -> FBX -> kn5 steps (ksEditor)
-## AC only loads .kn5 models, which are made with Kunos' ksEditor from FBX.
+## The folder drops straight into assettocorsa/content/tracks.
 
 static func export_track(spec_in: Dictionary, out_dir: String) -> Dictionary:
 	var spec := TrackSpec.normalized(spec_in)
@@ -15,6 +14,9 @@ static func export_track(spec_in: Dictionary, out_dir: String) -> Dictionary:
 	var root_dir := out_dir.path_join(id)
 	for d in [root_dir, root_dir.path_join("ui"), root_dir.path_join("data")]:
 		DirAccess.make_dir_recursive_absolute(d)
+	for stale in [id + ".glb", "HOW_TO_FINISH.txt"]:  # older Drift Lab exports
+		if FileAccess.file_exists(root_dir.path_join(stale)):
+			DirAccess.remove_absolute(root_dir.path_join(stale))
 	var built := TrackBuilder.build(spec)
 	var root: Node3D = built.root
 	var samples: Dictionary = built.samples
@@ -23,33 +25,24 @@ static func export_track(spec_in: Dictionary, out_dir: String) -> Dictionary:
 		if c is WorldEnvironment or c is DirectionalLight3D or c is OmniLight3D:
 			root.remove_child(c)
 			c.free()
-	# Dummies. AC cars face the dummy's +Z, ours face -Z: rotate 180.
-	var flip := Basis(Vector3.UP, PI)
+	# Spawn/timing dummies. Kn5Writer converts axes, so a Godot transform whose
+	# -Z points along the track becomes an AC dummy whose +Z does.
 	var start := TrackSpec.transform_at(samples, float(spec.start), 0.3)
 	var existing := root.get_node_or_null("AC_START_0")
 	if existing:
 		root.remove_child(existing)
 		existing.free()
+	var dummies := []
 	for nm in ["AC_START_0", "AC_HOTLAP_START_0", "AC_PIT_0"]:
-		var n := Node3D.new()
-		n.name = nm
-		n.transform = Transform3D(start.basis * flip, start.origin + (start.basis.z * 8.0 if nm == "AC_PIT_0" else Vector3.ZERO))
-		root.add_child(n)
+		dummies.append({"name": nm, "xform": Transform3D(start.basis, start.origin + (start.basis.z * 8.0 if nm == "AC_PIT_0" else Vector3.ZERO))})
 	var i0 := clampi(int(float(spec.start) * (samples.pos as PackedVector3Array).size()), 0, (samples.pos as PackedVector3Array).size() - 1)
 	var half := float(samples.width[i0]) * 0.5 + 1.0
 	for side in [["L", -1.0], ["R", 1.0]]:
-		var n := Node3D.new()
-		n.name = "AC_TIME_0_" + side[0]
-		n.transform = Transform3D(start.basis * flip, start.origin + (samples.right[i0] as Vector3) * side[1] * half)
-		root.add_child(n)
-	var gltf := GLTFDocument.new()
-	var state := GLTFState.new()
-	var err := gltf.append_from_scene(root, state)
-	if err == OK:
-		err = gltf.write_to_filesystem(state, root_dir.path_join(id + ".glb"))
+		dummies.append({"name": "AC_TIME_0_" + side[0], "xform": Transform3D(start.basis, start.origin + (samples.right[i0] as Vector3) * side[1] * half)})
+	var wr := Kn5Writer.write(root, dummies, root_dir.path_join(id + ".kn5"))
 	root.free()
-	if err != OK:
-		return {"ok": false, "message": "glTF export failed (%d)" % err}
+	if not wr.ok:
+		return {"ok": false, "message": "kn5 export failed: %s" % wr.error}
 
 	# Map + UI images.
 	var outline := TrackRaster.render(spec, 512, Color(0, 0, 0, 0), Color(1, 1, 1, 1))
@@ -74,21 +67,13 @@ static func export_track(spec_in: Dictionary, out_dir: String) -> Dictionary:
 		"length": "%d" % int(length), "width": "%d" % int(float(spec.width)), "pitboxes": "1", "run": "clockwise",
 	}
 	JsonUtil.save_file(root_dir.path_join("ui/ui_track.json"), ui)
-	_write(root_dir.path_join("HOW_TO_FINISH.txt"), """Drift Lab -> Assetto Corsa
-=========================
-Assetto Corsa loads tracks as .kn5 files, which only Kunos' free ksEditor can create (from FBX).
-
-1. Open %s.glb in Blender (File > Import > glTF). Keep object names - AC uses them:
-   1ROAD_* = driveable road, 1KERB_* = kerbs, 1GRASS_*/1GRAVEL_*/1SAND_*/1DIRT_* = run-off,
-   1WALL_* = walls, AC_START_0 / AC_PIT_0 / AC_HOTLAP_START_0 / AC_TIME_0_L / AC_TIME_0_R = spawn & timing.
-2. File > Export > FBX (Apply Scalings: FBX Units Scale, Forward: -Z, Up: Y, include Empties).
-3. Open the FBX in ksEditor (in the AC SDK), assign shaders (ksPerPixel for road/grass, ksTree for trees),
-   then File > Save kn5 as %s.kn5 into this folder.
-4. Copy this whole folder to assettocorsa/content/tracks/ and it will show up in Content Manager.
-
-map.png, data/map.ini, data/surfaces.ini and ui/ are already set up.
-""" % [id, id])
-	return {"ok": true, "message": "Exported to %s (see HOW_TO_FINISH.txt for the kn5 step)." % root_dir}
+	_write(root_dir.path_join("README.txt"), """%s - made with Drift Lab
+Copy this folder into assettocorsa/content/tracks/ and pick it in Content Manager.
+%s.kn5 holds the road (1ROAD), kerbs (1KERB), run-off (1GRASS/1GRAVEL/1DIRT), walls (1WALL)
+and the AC_START / AC_PIT / AC_TIME markers. No AI line is included, so use Practice or
+free roam / a server without AI cars.
+""" % [str(spec.get("name", id)), id])
+	return {"ok": true, "message": "Exported to %s - copy that folder into assettocorsa/content/tracks." % root_dir}
 
 
 static func _write(path: String, text: String) -> void:

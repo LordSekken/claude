@@ -182,13 +182,25 @@ func test_ac_export() -> void:
 	var out := ProjectSettings.globalize_path("user://test_ac_export")
 	var r := AcTrackExporter.export_track(spec, out)
 	check(r.ok, "AC export: %s" % r.message)
-	for f in ["kanto_lot/kanto_lot.glb", "kanto_lot/ui/ui_track.json", "kanto_lot/map.png", "kanto_lot/data/map.ini", "kanto_lot/data/surfaces.ini"]:
+	for f in ["kanto_lot/kanto_lot.kn5", "kanto_lot/ui/ui_track.json", "kanto_lot/map.png", "kanto_lot/data/map.ini", "kanto_lot/data/surfaces.ini"]:
 		check(FileAccess.file_exists(out.path_join(f)), "AC export wrote " + f)
-	# Re-import the glb with the external loader (AC naming -> physics).
-	var ext := ExternalTrackLoader.load_model(out.path_join("kanto_lot/kanto_lot.glb"))
-	check(ext.ok and int(ext.collision_meshes) >= 3, "exported glb re-imports with AC surfaces (%s)" % ext.get("collision_meshes", ext.get("error")))
+	# Read the kn5 back (our reader was validated on real AC car files) and
+	# load it as a track: AC naming -> physics surfaces, start from AC_START_0.
+	var kn := Kn5Loader.load_model(out.path_join("kanto_lot/kanto_lot.kn5"), "", false)
+	check(kn.ok and int(kn.meshes) >= 5, "exported kn5 parses (%s)" % kn.get("error", kn.get("meshes")))
+	if kn.ok:
+		var names: Array = kn.named.keys()
+		check(names.any(func(n: String) -> bool: return n.begins_with("1ROAD")) and names.any(func(n: String) -> bool: return n.begins_with("1WALL")), "kn5 has 1ROAD and 1WALL meshes")
+		kn.root.free()
+	var ext := ExternalTrackLoader.load_model(out.path_join("kanto_lot/kanto_lot.kn5"))
+	check(ext.ok and int(ext.collision_meshes) >= 3, "exported kn5 loads as a drivable track (%s)" % ext.get("collision_meshes", ext.get("error")))
 	if ext.ok:
-		check((ext.start as Transform3D).origin.length() > 1.0, "AC_START_0 found in re-imported model")
+		var built := TrackBuilder.build(spec)
+		var want := TrackSpec.transform_at(built.samples, float(TrackSpec.normalized(spec).start), 0.3)
+		built.root.free()
+		var got: Transform3D = ext.start
+		check(got.origin.distance_to(want.origin + Vector3.UP * 0.8) < 0.05, "AC_START_0 round-trips position (%s vs %s)" % [got.origin, want.origin])
+		check((-got.basis.z).dot(-want.basis.z) > 0.99, "AC_START_0 faces along the track")
 		ext.root.free()
 	check(ExternalTrackLoader.classify("1ROAD_12") == "asphalt" and ExternalTrackLoader.classify("2KERB") == "kerb" and ExternalTrackLoader.classify("1WALL") == "wall" and ExternalTrackLoader.classify("tree01") == "", "AC surface name classification")
 
