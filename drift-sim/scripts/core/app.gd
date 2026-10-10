@@ -20,7 +20,7 @@ var parts := PartsLibrary.new()
 
 
 func _ready() -> void:
-	for d in [USER_TRACKS, USER_CARS, USER_PARTS + "/chassis", USER_PARTS + "/engines", USER_PARTS + "/transmissions"]:
+	for d in ["user://recordings", USER_TRACKS, USER_CARS, USER_PARTS + "/chassis", USER_PARTS + "/engines", USER_PARTS + "/transmissions"]:
 		DirAccess.make_dir_recursive_absolute(d)
 	parts.reload()
 

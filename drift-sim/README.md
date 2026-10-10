@@ -80,6 +80,16 @@ Needs an Anthropic API key (Settings, or the `ANTHROPIC_API_KEY` environment var
 - *Generate with Claude*: works on **any** picture, including a photo taken standing in the place. Claude works out the scale from things like lanes and parking bays and can run the tracer itself for exact geometry. It submits a track, gets back validation results plus a rendered top-down preview, compares that to your photo, and iterates.
 - Open the result in the editor (with your photo as a background layer) to fine-tune.
 
+## Record a track from Forza (Data Out telemetry)
+
+Rebuild your favourite Forza Horizon / Motorsport drift zones by driving them:
+1. In Forza: **Settings → HUD and Gameplay → Data Out: ON**, IP `127.0.0.1` (or this PC's IP if Forza runs on an Xbox), port `5300`.
+2. Drift Lab → **Record from Forza** → **Listen**. The live line shows packets arriving, speed and position.
+3. Drive to the start of the zone, press **Record**, drive it, press **Stop**. For exact road width, add a pass hugging the **left edge** and one hugging the **right edge**.
+4. **Make track** builds the real layout, corners and elevation, from the car's world position (~60 samples/s). Then **Open in Track Editor** (walls, zones, clips), **Save + Drive**, or **Export for Assetto Corsa**.
+
+Recordings are saved to `%APPDATA%\DriftLab\recordings` so they can be shared or rebuilt later. The game's layout (Horizon vs Motorsport packets) and its axis handedness are detected from the physics (speed vs. velocity, lateral g in corners), not hard-coded.
+
 ## Scoring (Forza-style)
 
 - Points accrue while sliding (over 20 km/h and 10°). The rate grows with speed and angle.

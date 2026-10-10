@@ -27,6 +27,7 @@ func _init() -> void:
 	test_ac_export()
 	await test_agent_tools()
 	test_kn5()
+	test_forza()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -296,6 +297,58 @@ func test_kn5() -> void:
 		check(v[1].is_equal_approx(Vector3(-1, 0, 0)) and v[2].is_equal_approx(Vector3(0, 0, -1)), "kn5 vertices rotated 180 deg about Y")
 		r.root.free()
 	check(AcPaths.resolve({"path": "/nonexistent/car"}).is_empty() or true, "AcPaths.resolve handles missing folders")
+
+
+func _forza_packet(horizon: bool, pos: Vector3, speed: float, accel_x: float) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(324 if horizon else 311)
+	b.encode_s32(0, 1)                       # race on
+	b.encode_float(20, accel_x)              # local lateral accel (+ right)
+	b.encode_float(40, speed)                # local forward velocity
+	var o := 244 if horizon else 232
+	b.encode_float(o, pos.x)
+	b.encode_float(o + 4, pos.y)
+	b.encode_float(o + 8, pos.z)
+	b.encode_float(o + 12, speed)
+	return b
+
+
+func test_forza() -> void:
+	for horizon in [true, false]:
+		for mirrored in [false, true]:
+			var t := ForzaTelemetry.new()
+			var passes := []
+			for role_r in [["line", 60.0], ["left", 65.0], ["right", 55.0]]:
+				var ps := ForzaTelemetry.Pass.new()
+				ps.role = role_r[0]
+				var r: float = role_r[1]
+				# Clockwise from above in Drift Lab's frame = right-hand turns.
+				for i in 900:
+					var a := TAU * i / 880.0  # heading +Z with centre on the right
+					var ours := Vector3(r * cos(a), 5.0 * sin(a), r * sin(a))
+					var forza := Vector3(-ours.x if mirrored else ours.x, ours.y, ours.z)
+					var s := t.parse(_forza_packet(horizon, forza, 20.0, 4.0))
+					if not s.is_empty():
+						ps.add(s)
+				passes.append(ps)
+			var label := "%s %s" % ["FH" if horizon else "FM7", "mirrored" if mirrored else "plain"]
+			check(t.dash_offset == (244 if horizon else 232), "forza %s: layout detected from speed (%d)" % [label, t.dash_offset])
+			var r := ForzaTelemetry.build_track(passes, "Test Zone")
+			check(r.ok, "forza %s: track built" % label)
+			if not r.ok:
+				continue
+			check(bool(r.info.mirrored) == mirrored, "forza %s: handedness detected from lateral g" % label)
+			check(bool(r.info.closed), "forza %s: loop detected" % label)
+			check(absf(float(r.info.length_m) - TAU * 60.0) < 25.0, "forza %s: length %.0f m ~ %.0f" % [label, r.info.length_m, TAU * 60.0])
+			check(absf(float(r.info.width_m) - 11.8) < 1.5, "forza %s: width from edge passes %.1f m" % [label, r.info.width_m])
+			check(absf(float(r.info.elevation_m) - 10.0) < 1.5, "forza %s: elevation kept (%.1f m)" % [label, r.info.elevation_m])
+			var smp := TrackSpec.sample(r.spec, 2.0)
+			var right := 0
+			for k: float in smp.curvature:
+				if k > 0.0:
+					right += 1
+			check(right > (smp.curvature as PackedFloat32Array).size() * 0.8, "forza %s: corners turn the right way" % label)
+			check((TrackSpec.validate(r.spec).errors as Array).is_empty(), "forza %s: track validates" % label)
 
 
 func test_physics() -> void:

@@ -39,6 +39,7 @@ func _on_nav(target: String) -> void:
 		"garage": _screen(GarageScreen.new())
 		"editor": _screen(TrackEditor.new())
 		"photo": _screen(PhotoImportScreen.new())
+		"forza": _screen(ForzaRecordScreen.new())
 		"settings": _screen(SettingsScreen.new())
 		"menu": show_menu()
 		"quit": get_tree().quit()

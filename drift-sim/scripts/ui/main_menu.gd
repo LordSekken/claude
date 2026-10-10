@@ -64,7 +64,7 @@ func _ready() -> void:
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	for pair in [["Garage / Car Builder", "garage"], ["Track Editor", "editor"], ["Photo -> Track", "photo"], ["Settings & Controls", "settings"]]:
+	for pair in [["Garage / Car Builder", "garage"], ["Track Editor", "editor"], ["Record from Forza", "forza"], ["Photo -> Track", "photo"], ["Settings & Controls", "settings"]]:
 		var b := UiUtil.button(pair[0], func() -> void: navigate.emit(pair[1]))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		grid.add_child(b)
