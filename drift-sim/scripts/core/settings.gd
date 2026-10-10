@@ -27,9 +27,11 @@ var use_wheel := false
 var ffb_enabled := true
 var ffb_gain := 0.8
 var ffb_damper := 1.0
-var camera_mode := 3          # ChaseCamera.Mode (3 = cockpit)
+var camera_mode := 2          # ChaseCamera.Mode (2 = bonnet/hood, 3 = cockpit)
 var look_to_apex := true      # desktop cockpit: glance into the drift
 var seat_offset := Vector3.ZERO
+var volume := 0.8
+var ac_root := ""             # Assetto Corsa folder (auto-detected if empty)
 
 
 func _ready() -> void:
@@ -57,9 +59,11 @@ func load_settings() -> void:
 	clutch_binding = cfg.get_value("controls", "clutch", clutch_binding)
 	handbrake_binding = cfg.get_value("controls", "handbrake", handbrake_binding)
 	button_bindings = cfg.get_value("controls", "buttons", button_bindings)
+	ac_root = cfg.get_value("ac", "root", ac_root)
+	volume = cfg.get_value("audio", "volume", volume)
 	seat_offset = cfg.get_value("view", "seat_offset", seat_offset)
 	look_to_apex = cfg.get_value("view", "look_to_apex", look_to_apex)
-	camera_mode = cfg.get_value("view", "camera_mode", camera_mode)
+	camera_mode = cfg.get_value("view", "camera_mode_v2", camera_mode)
 	ffb_damper = cfg.get_value("ffb", "damper", ffb_damper)
 	ffb_gain = cfg.get_value("ffb", "gain", ffb_gain)
 	ffb_enabled = cfg.get_value("ffb", "enabled", ffb_enabled)
@@ -81,9 +85,11 @@ func save_settings() -> void:
 	cfg.set_value("controls", "clutch", clutch_binding)
 	cfg.set_value("controls", "handbrake", handbrake_binding)
 	cfg.set_value("controls", "buttons", button_bindings)
+	cfg.set_value("ac", "root", ac_root)
+	cfg.set_value("audio", "volume", volume)
 	cfg.set_value("view", "seat_offset", seat_offset)
 	cfg.set_value("view", "look_to_apex", look_to_apex)
-	cfg.set_value("view", "camera_mode", camera_mode)
+	cfg.set_value("view", "camera_mode_v2", camera_mode)
 	cfg.set_value("ffb", "damper", ffb_damper)
 	cfg.set_value("ffb", "gain", ffb_gain)
 	cfg.set_value("ffb", "enabled", ffb_enabled)

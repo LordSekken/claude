@@ -41,7 +41,17 @@ func _ready() -> void:
 	vb.add_child(UiUtil.label("The key is stored only on this PC (%s)." % ProjectSettings.globalize_path("user://settings.cfg"), 13, Color(0.6, 0.6, 0.65)))
 
 	vb.add_child(HSeparator.new())
+	vb.add_child(UiUtil.label("Assetto Corsa", 22, Color(1, 0.8, 0.25)))
+	var ac_edit := LineEdit.new()
+	ac_edit.text = str(settings.ac_root)
+	ac_edit.placeholder_text = "auto-detect (Steam)  e.g. D:/SteamLibrary/steamapps/common/assettocorsa"
+	ac_edit.text_changed.connect(func(t: String) -> void: settings.ac_root = t.strip_edges())
+	vb.add_child(UiUtil.row("AC folder", ac_edit))
+	var found := AcPaths.cars_dir()
+	vb.add_child(UiUtil.label(("Found %d cars in %s" % [AcPaths.list_cars().size(), found]) if found != "" else "Assetto Corsa not found yet - paste its folder above.", 13, Color(0.6, 0.9, 0.6) if found != "" else Color(1, 0.8, 0.4), true))
+	vb.add_child(HSeparator.new())
 	vb.add_child(UiUtil.label("Assists", 22, Color(1, 0.8, 0.25)))
+	vb.add_child(UiUtil.row("Volume", UiUtil.slider(0, 1, 0.05, float(settings.volume), func(v: float) -> void: settings.volume = v), 280))
 	vb.add_child(UiUtil.row("Steering assist (pad/keyboard)", UiUtil.slider(0, 1, 0.05, float(settings.steering_assist), func(v: float) -> void: settings.steering_assist = v), 280))
 	for pair in [["auto_clutch", "Auto clutch"], ["auto_shift", "Automatic gearbox"], ["units_kmh", "km/h (off = mph)"]]:
 		var cb := CheckBox.new()
@@ -90,7 +100,7 @@ func _ready() -> void:
 	vb.add_child(grid)
 	vb.add_child(HSeparator.new())
 	vb.add_child(UiUtil.label("Force feedback (wheels)", 22, Color(1, 0.8, 0.25)))
-	vb.add_child(UiUtil.label("Self-aligning torque from the front tyres: the wheel goes light when the fronts let go, snaps back on a transition, and kicks when you hit a wall. Runs through ffb_helper.exe (shipped next to DriftLab.exe).", 14, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("Self-aligning torque from the front tyres: the wheel goes light when the fronts let go, snaps back on a transition, and kicks when you hit a wall. Runs through ffb_helper.exe (shipped next to DriftLab.exe). Close other force-feedback tools while playing - only one app can drive the wheel's motor at a time.", 14, Color(0.75, 0.75, 0.8)))
 	var ffb: Node = get_node("/root/ForceFeedback")
 	var ffb_on := CheckBox.new()
 	ffb_on.text = "Enable force feedback"
@@ -106,13 +116,14 @@ func _ready() -> void:
 	vb.add_child(UiUtil.row("Damping (weight)", UiUtil.slider(0, 2, 0.05, float(settings.ffb_damper), func(v: float) -> void: settings.ffb_damper = v), 280))
 	var ffb_row := HBoxContainer.new()
 	ffb_row.add_child(UiUtil.button("Test (pulls left, then right)", func() -> void: ffb.test(), 36))
+	ffb_row.add_child(UiUtil.button("Open log", func() -> void: OS.shell_open(OS.get_environment("TEMP").path_join("DriftLab_ffb.log")), 36))
 	_ffb_status = UiUtil.label("", 14, Color(0.6, 0.9, 0.6), true)
 	ffb_row.add_child(_ffb_status)
 	vb.add_child(ffb_row)
 
 	vb.add_child(HSeparator.new())
 	vb.add_child(UiUtil.label("View & VR", 22, Color(1, 0.8, 0.25)))
-	vb.add_child(UiUtil.row("Default camera", UiUtil.option(["Chase", "Close chase", "Bonnet", "Cockpit (first person)"], int(settings.camera_mode), func(i: int) -> void: settings.camera_mode = i), 280))
+	vb.add_child(UiUtil.row("Default camera (monitor)", UiUtil.option(["Chase", "Close chase", "Hood", "Cockpit (first person)"], int(settings.camera_mode), func(i: int) -> void: settings.camera_mode = i), 280))
 	var apex := CheckBox.new()
 	apex.text = "Cockpit view glances into the drift (desktop only)"
 	apex.button_pressed = bool(settings.look_to_apex)

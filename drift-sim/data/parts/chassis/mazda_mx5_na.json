@@ -22,7 +22,7 @@
   "tire_width_mm": 185,
   "stock_tires": "185/60R14",
   "steer_lock_deg": 36,
-  "max_steer_lock_deg": 60,
+  "max_steer_lock_deg": 66,
   "brake_torque_nm": 3300,
   "brake_bias_front": 0.66,
   "handbrake_torque_nm": 800,

@@ -1,0 +1,45 @@
+{
+  "id": "bdc_ref_nb_miata",
+  "name": "NB Miata - BDC v6 spec (435 bhp)",
+  "chassis": "mazda_mx5_nb",
+  "engine": "bdc_miata_turbo_435",
+  "transmission": "nissan_cd009",
+  "drivetrain": null,
+  "color": "#6a1aa6",
+  "body_style": "hardtop",
+  "wing": true,
+  "tune": {
+    "boost_bar": 1.3,
+    "diff": {
+      "type": "welded"
+    },
+    "final_drive": 4.083,
+    "springs_front_n_mm": 90,
+    "springs_rear_n_mm": 70,
+    "damp_bump_front": 3600,
+    "damp_rebound_front": 5600,
+    "damp_bump_rear": 3200,
+    "damp_rebound_rear": 5000,
+    "arb_front_n_mm": 34,
+    "arb_rear_n_mm": 6,
+    "ride_height_mm": -60,
+    "steer_lock_deg": 62,
+    "ackermann": 0.15,
+    "brake_bias_front": 0.6,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 22,
+    "tire_front": {
+      "compound": "sport",
+      "size": "215/45R16"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "235/40R17"
+    }
+  },
+  "notes": "Recreated from the published BDC v6.0 specs (435 bhp, 504 Nm, 1110 kg). The real car's diff, suspension and tyre data are packed in data.acd, so the setup here is a typical BDC street-tier guess: locked diff, ~62 deg lock, stiff coilovers. Unpack the car in Content Manager and use Garage > Import AC car to get its exact physics. weight_reduction_kg is negative = hardtop, cage and wide body added.",
+  "ac_model": {
+    "car": "bdc_v6_0_nbmiata",
+    "skin": "BDC flame 1"
+  }
+}

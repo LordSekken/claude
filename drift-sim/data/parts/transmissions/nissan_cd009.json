@@ -1,0 +1,18 @@
+{
+  "id": "nissan_cd009",
+  "name": "Nissan CD009 6-speed (350Z/370Z)",
+  "gear_ratios": [
+    3.794,
+    2.324,
+    1.624,
+    1.271,
+    1.0,
+    0.794
+  ],
+  "final_drive": 4.083,
+  "reverse_ratio": 3.446,
+  "max_torque_nm": 650,
+  "mass_kg": 52,
+  "shift_time_s": 0.15,
+  "notes": "Popular drift swap box: strong, cheap, close-ish ratios. Final drive here is the S-chassis 4.08."
+}

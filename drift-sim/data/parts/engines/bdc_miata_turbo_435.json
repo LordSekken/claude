@@ -1,0 +1,77 @@
+{
+  "id": "bdc_miata_turbo_435",
+  "name": "BDC v6 Miata turbo swap (435 bhp / 504 Nm)",
+  "mass_kg": 165,
+  "idle_rpm": 900,
+  "limiter_rpm": 7900,
+  "max_safe_rpm": 8200,
+  "aspiration": "turbo",
+  "boost_bar": 1.3,
+  "max_boost_bar": 1.8,
+  "spool_rpm": 3200,
+  "turbo_lag_s": 0.45,
+  "inertia": 0.15,
+  "torque_curve": [
+    [
+      1000,
+      140
+    ],
+    [
+      1500,
+      151
+    ],
+    [
+      2000,
+      195
+    ],
+    [
+      2607,
+      277
+    ],
+    [
+      3000,
+      340
+    ],
+    [
+      3500,
+      413
+    ],
+    [
+      4000,
+      463
+    ],
+    [
+      4500,
+      488
+    ],
+    [
+      5000,
+      500
+    ],
+    [
+      5500,
+      504
+    ],
+    [
+      6000,
+      492
+    ],
+    [
+      6500,
+      471
+    ],
+    [
+      7000,
+      443
+    ],
+    [
+      7500,
+      412
+    ],
+    [
+      7900,
+      391
+    ]
+  ],
+  "notes": "Torque curve and output taken from the published specs in BDC v6.0 MX-5 NA/NB ui_car.json (435 bhp, 504 Nm @ 5500, 7900 rpm). Engine mass is an estimate."
+}

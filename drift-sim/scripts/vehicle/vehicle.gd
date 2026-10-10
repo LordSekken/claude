@@ -610,6 +610,8 @@ func _compute_ffb(dt: float) -> void:
 ## Driver eye point in the car's local space (left-hand drive unless the
 ## chassis says "driver_side": "right"), plus the user's seat adjustment.
 func seat_local(offset := Vector3.ZERO) -> Vector3:
+	if spec.has("eye"):
+		return (spec.eye as Vector3) + offset
 	var rmean := (float(spec.radius_f) + float(spec.radius_r)) * 0.5
 	var side := 1.0 if str(spec.get("driver_side", "left")) == "right" else -1.0
 	var eye_h := float(spec.height) * 0.70 + float(spec.ride_offset) * 0.6  # above ground

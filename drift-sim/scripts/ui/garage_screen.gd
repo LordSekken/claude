@@ -166,6 +166,29 @@ func _rebuild_ui() -> void:
 				build[key] = ids[i - (1 if key != "chassis" else 0)]
 			_refresh_stats())
 		_parts_box.add_child(UiUtil.row(kind_key[2], opt))
+	# 3D model from the player's Assetto Corsa install (optional).
+	var ac_cars := AcPaths.list_cars()
+	var cur_model: Dictionary = build.get("ac_model", {}) if build.get("ac_model") is Dictionary else {}
+	var model_labels := ["Simple built-in body"]
+	model_labels.append_array(Array(ac_cars))
+	var msel := ac_cars.find(str(cur_model.get("car", ""))) + 1
+	_parts_box.add_child(UiUtil.row("3D model (from AC)", UiUtil.option(model_labels, msel, func(i: int) -> void:
+		if i == 0:
+			build.erase("ac_model")
+		else:
+			build["ac_model"] = {"car": ac_cars[i - 1], "skin": ""}
+		_rebuild_ui())))
+	if not cur_model.is_empty():
+		var where := AcPaths.resolve(cur_model)
+		if where.is_empty():
+			_parts_box.add_child(UiUtil.label("'%s' isn't in your AC folder (Settings > Assetto Corsa folder) - the simple body will be used." % cur_model.get("car", ""), 13, Color(1, 0.8, 0.4), true))
+		else:
+			var skins := AcPaths.list_skins(where.car_dir)
+			if skins.size() > 0:
+				_parts_box.add_child(UiUtil.row("Skin", UiUtil.option(Array(skins), maxi(skins.find(where.skin), 0), func(i: int) -> void:
+					(build.ac_model as Dictionary)["skin"] = skins[i])))
+	elif ac_cars.is_empty():
+		_parts_box.add_child(UiUtil.label("No Assetto Corsa install found - set its folder in Settings to use AC car models.", 13, Color(0.7, 0.7, 0.75), true))
 	var lay: Variant = build.get("drivetrain")
 	var lsel := 0 if lay == null else maxi(LAYOUTS.find(str(lay)), 0)
 	_parts_box.add_child(UiUtil.row("Drivetrain", UiUtil.option(["Stock layout", "RWD", "AWD", "FWD"], lsel, func(i: int) -> void:

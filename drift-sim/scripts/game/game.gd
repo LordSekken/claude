@@ -61,11 +61,16 @@ func start(track: Dictionary, car_build: Dictionary) -> String:
 				zz["target"] = int(maxf(frac * length * 28.0, 3000.0))
 			scorer.zones.append(zz)
 
+	var ac_model := {}
+	if car_build.has("ac_model"):
+		ac_model = AcCarModel.load_for(car_build.ac_model)
+		if not ac_model.is_empty():
+			AcCarModel.apply_geometry(build_result.spec, ac_model)
 	vehicle = Vehicle.new()
 	vehicle.name = "Car"
 	vehicle.setup(build_result.spec)
 	add_child(vehicle)
-	vehicle.add_child(CarVisual.create(vehicle))
+	vehicle.add_child(CarVisual.create(vehicle, ac_model))
 	vehicle.reset_to(start_xform)
 	vehicle.hard_impact.connect(scorer.on_wall_impact)
 
@@ -91,6 +96,9 @@ func start(track: Dictionary, car_build: Dictionary) -> String:
 		vr.camera.make_current()
 		scorer.popup.connect(func(t: String, _k: String) -> void: vr.show_popup(t))
 
+	var audio := CarAudio.new()
+	add_child(audio)
+	audio.setup(vehicle, float(settings.volume))
 	input = DriverInput.new(vehicle)
 	hud = Hud.new()
 	hud.kmh = bool(get_node("/root/Settings").units_kmh)
@@ -108,8 +116,7 @@ func _physics_process(dt: float) -> void:
 	var on_track := vehicle.on_road_wheels >= 2
 	scorer.update(dt, vehicle.speed, vehicle.drift_angle, on_track, vehicle.wall_proximity, tracker.progress)
 	input.rumble(1.0)
-	if bool(settings.use_wheel):
-		ffb.send(vehicle.ffb_force, vehicle.ffb_damper, vehicle.ffb_spring)
+	ffb.send(vehicle.ffb_force, vehicle.ffb_damper, vehicle.ffb_spring)
 	if vr:
 		vr.score_label.text = (DriftScorer.format_points(scorer.chain_total()) + "  x%.1f" % scorer.multiplier) if scorer.chain_active else ""
 	_seat_adjust(dt)

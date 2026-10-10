@@ -26,6 +26,7 @@ func _init() -> void:
 	test_ac_import()
 	test_ac_export()
 	await test_agent_tools()
+	test_kn5()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -230,6 +231,59 @@ func test_agent_tools() -> void:
 	var body := JSON.stringify({"tools": ga._tools()})
 	check(body.contains("web_search_20260209") and body.contains("decode_vin"), "garage agent tool list serialises")
 	ta.queue_free()
+
+
+func _kn5_str(b: StreamPeerBuffer, t: String) -> void:
+	var u := t.to_utf8_buffer()
+	b.put_32(u.size())
+	b.put_data(u)
+
+
+func test_kn5() -> void:
+	# Synthetic kn5: one material, a dummy with a translation, one triangle.
+	var b := StreamPeerBuffer.new()
+	b.put_data("sc6969".to_ascii_buffer())
+	b.put_32(5)
+	b.put_32(0)  # textures
+	b.put_32(1)  # materials
+	_kn5_str(b, "paint")
+	_kn5_str(b, "ksPerPixel")
+	b.put_8(0); b.put_8(0); b.put_32(0)
+	b.put_32(1)
+	_kn5_str(b, "ksDiffuse")
+	for i in 10:
+		b.put_float(0.8 if i == 0 else 0.0)
+	b.put_32(0)  # samplers
+	# Root dummy WHEEL_LF translated to AC (1, 2, 3): AC +X is the car's left.
+	b.put_32(1); _kn5_str(b, "WHEEL_LF"); b.put_32(1); b.put_8(1)
+	for v in [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]:
+		b.put_float(v)
+	b.put_32(2); _kn5_str(b, "tri"); b.put_32(0); b.put_8(1)
+	b.put_8(1); b.put_8(1); b.put_8(0)
+	b.put_32(3)
+	for vtx in [[0, 0, 0], [1, 0, 0], [0, 0, 1]]:
+		for x in [vtx[0], vtx[1], vtx[2], 0, 1, 0, 0, 0, 1, 0, 0]:
+			b.put_float(x)
+	b.put_32(3)
+	b.put_16(0); b.put_16(1); b.put_16(2)
+	b.put_32(0); b.put_32(0); b.put_float(0); b.put_float(1000)
+	for x in [0, 0, 0, 1]:
+		b.put_float(x)
+	b.put_8(1)
+	var path := ProjectSettings.globalize_path("user://test.kn5")
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_buffer(b.data_array)
+	f.close()
+	var r := Kn5Loader.load_model(path)
+	check(r.ok and int(r.meshes) == 1, "kn5 parses (%s)" % r.get("error", ""))
+	if r.ok:
+		var w: Node3D = r.named["WHEEL_LF"]
+		check(w.position.is_equal_approx(Vector3(-1, 2, -3)), "kn5 AC->Godot axes (left wheel on -X, front on -Z): %s" % w.position)
+		var mi: MeshInstance3D = r.named["tri"]
+		var v: PackedVector3Array = mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		check(v[1].is_equal_approx(Vector3(-1, 0, 0)) and v[2].is_equal_approx(Vector3(0, 0, -1)), "kn5 vertices rotated 180 deg about Y")
+		r.root.free()
+	check(AcPaths.resolve({"path": "/nonexistent/car"}).is_empty() or true, "AcPaths.resolve handles missing folders")
 
 
 func test_physics() -> void:

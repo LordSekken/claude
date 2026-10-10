@@ -36,9 +36,9 @@ The menus work with a controller too (D-pad/stick + A).
 
 **Setting up a wheel (G920):** go to *Settings & Controls*, tick *Use a steering wheel*, then click **Bind** for each control and move it once: turn the wheel right, press each pedal, press each paddle. Drift Lab records which axis moved and how far, so any pedal direction or range works. Set the wheel rotation to match G HUB (900° is a good default for drifting). In G HUB, turn **off** the centering spring.
 
-**Force feedback:** you feel self-aligning torque from the front tyres. The wheel goes light as the fronts pass their grip limit and snaps back through a transition. Kerbs rumble, grass and gravel shake, and wall hits kick. Settings has strength and damping sliders and a **Test** button that pulls the wheel left, then right; the status line next to it shows whether a wheel was found. Godot can't drive DirectInput force feedback itself, so the game streams forces to `ffb_helper.exe` (SDL3, source in `native/ffb/`). It cuts the force within 250 ms if the game stops, and exits when the game closes. Xbox controllers get rumble instead.
+**Force feedback:** you feel self-aligning torque from the front tyres. The wheel goes light as the fronts pass their grip limit and snaps back through a transition. Kerbs rumble, grass and gravel shake, and wall hits kick. Settings has strength and damping sliders and a **Test** button that pulls the wheel left, then right; the status line next to it shows whether a wheel was found, and **Open log** shows `%TEMP%\\DriftLab_ffb.log` (every device the helper saw and why it did or didn't use it). Close other force-feedback tools while playing; only one app can drive the wheel's motor at a time. Godot can't drive DirectInput force feedback itself, so the game streams forces to `ffb_helper.exe` (SDL3, source in `native/ffb/`). It cuts the force within 250 ms if the game stops, and exits when the game closes. Xbox controllers get rumble instead.
 
-**First person & VR:** the cockpit camera is the default (C cycles chase / close chase / bonnet / cockpit). On a monitor the view glances into the drift automatically; Z/X or the right stick look around manually. Numpad 8/2 moves the seat forward/back and 9/3 up/down.
+**Cameras & VR:** on a monitor the hood cam is the default (C cycles chase / close chase / hood / cockpit; your choice is remembered). VR always puts you in the cockpit. On a monitor the view glances into the drift automatically; Z/X or the right stick look around manually. Numpad 8/2 moves the seat forward/back and 9/3 up/down.
 
 For **Quest 2**: connect with Quest Link, Air Link or Virtual Desktop (OpenXR runtime active), then run `Drift Lab VR.bat`. Pick your car and track on the PC monitor and press Drive; you're then in the driver's seat. V or right-stick click recentres your view. Score and popups float in front of the car. In VR, Start pauses, and while paused Back resets the car and Y quits to the menu.
 
@@ -56,7 +56,7 @@ Swaps are physical: changing the engine changes mass and front/rear balance (by 
 - Engines: Subaru EJ25D, EJ205 (02-05 WRX), EJ257 (STI), Nissan KA24DE, SR20DET, Toyota 2JZ-GTE, 4A-GE, BMW M52B28, Mazda B6ZE, BP-ZE, BP-Z3, BP turbo (Mazdaspeed), LF-VE (NC), SKYACTIV-G 2.0 (ND2), Chevy LS3
 - Gearboxes: Subaru TY754 5MT, TY856 6MT (STI), Nissan FS5W71C, BMW ZF S5D, Toyota T50, R154, Mazda M5OD, NB/NC/ND 6-speeds
 
-**Miatas:** NA 1.8 welded grassroots, NA BP-turbo with NB 6-speed, NB Mazdaspeed drift spec, NC welded street drifter, ND2 club drift, and the NA LS3 swap.
+**Miatas:** BDC v6 NA and NB recreations (435 bhp / 504 Nm / 1110 kg from BDC's published specs, CD009 6-speed, locked diff, ~62° lock; they use the BDC models from your AC install if present), NA 1.8 welded grassroots, NA BP-turbo with NB 6-speed, NB Mazdaspeed drift spec, NC welded street drifter, ND2 club drift, and the NA LS3 swap.
 
 **Featured: '98 Outback, EJ205 swap, RWD drift build.** The budget Subaru drift recipe: 02-05 WRX EJ205 + STI 6-speed, DCCD locked and front axles pulled for RWD, welded R180, ~1.15 bar on a tune (≈266 hp), coilovers ~95 mm lower than Outback height, 58° angle kit, hydro handbrake, interior stripped. Compare it with the bone-stock Outback, which (correctly) refuses to slide on the handbrake because the viscous centre diff ties the rear wheels to the front.
 
@@ -87,15 +87,26 @@ Needs an Anthropic API key (Settings, or the `ANTHROPIC_API_KEY` environment var
 - The chain **banks** after 2 s of not drifting. **Wrecking** into a wall, going **off track** or **spinning out** loses the unbanked chain.
 - **Drift zones** (orange on the minimap) are scored separately with 1-3 stars.
 
+## Audio
+
+All sound is synthesised live from the simulation, so every engine/turbo/tune sounds different without sample packs:
+- **Engine:** firing-frequency harmonics from cylinder count and rpm, shaped by load. The limiter's fuel cut bounces audibly, and flat-4 Subarus get the unequal-length boxer burble.
+- **Turbo:** whine with boost, plus a blow-off on lift.
+- **Tyres:** squeal driven by slip angle and wheelspin past the tyre's peak.
+- Gravel/grass rumble, wind, and wall thuds.
+
+Volume is in Settings.
+
 ## Assetto Corsa compatibility
 
 | Direction | What works |
 |---|---|
 | **AC car → Drift Lab** | *Garage → Import AC car* reads an **unpacked** car data folder: car.ini, engine.ini + power.lut, turbo, drivetrain.ini, suspensions.ini, tyres.ini, brakes.ini. It produces a chassis, engine and gearbox part plus a build, so imported cars can be engine-swapped like any other. Packed cars (`data.acd`) need unpacking first; Content Manager can do that. |
+| **AC car models → Drift Lab** | Pick **3D model (from AC)** and a skin in the Garage. Drift Lab reads the car's `.kn5` (and skin textures) straight from your Assetto Corsa install at runtime: nothing is copied or redistributed. The real wheels spin and steer on the simulated wheels, the real steering wheel turns, wheelbase/track/wheel size come from the model, and the cockpit view sits behind the model's steering wheel. AC is auto-detected in Steam libraries, or set its folder in Settings. Some special shaders (CSP car paint, normal maps) render simplified. |
 | **AC track → Drift Lab** | *Load track model* takes .glb / .gltf / .fbx (convert a kn5 to FBX first, e.g. with Content Manager's *Unpack KN5* or a Blender kn5 importer). AC physics naming is honoured: `1ROAD`, `1KERB`, `1GRASS`, `1SAND`, `*WALL*`… become surfaces and walls, and the car spawns at `AC_START_0`. |
 | **Drift Lab track → AC** | *Track editor → Export for Assetto Corsa* writes a mod folder: geometry (.glb) with AC physics names and `AC_START/PIT/HOTLAP/TIME` dummies, `ui/ui_track.json`, outline, `map.png` + `data/map.ini`, and `data/surfaces.ini`. AC only reads .kn5, which only Kunos' ksEditor can produce (from FBX), so the last step is Blender → FBX → ksEditor. `HOW_TO_FINISH.txt` walks through it. |
 
-AC car 3D models (kn5) aren't loaded; cars use a procedural body sized from the chassis dimensions.
+Cars without an AC model use a simple body sized from the chassis dimensions.
 
 ## How the physics works
 
@@ -111,7 +122,6 @@ It aims for *believable and consistent* rather than AC-level detail. There's no 
 
 - Force feedback tuning against more wheels (tested in code and under Wine; needs real-wheel feel tuning).
 - VR: in-headset menus (for now menus are on the monitor).
-- Load .glb car models (e.g. CC-licensed models) instead of the procedural body.
 - Ghosts/replays, tandem AI, online leaderboards.
 - Tyre temperature, camber/caster effects.
 
@@ -120,7 +130,7 @@ It aims for *believable and consistent* rather than AC-level detail. There's no 
 ```
 cd drift-sim
 godot --headless --path . --import
-godot --headless --path . -s tests/run_tests.gd        # 134 checks: tyres, builds, tracks, tracer, scoring, AC import/export, physics, game smoke
+godot --headless --path . -s tests/run_tests.gd        # 142 checks: tyres, builds, tracks, tracer, scoring, AC import/export, physics, game smoke
 xvfb-run godot --path . --rendering-method gl_compatibility -s tests/screenshots.gd -- /tmp/shots
 ```
 

@@ -10,12 +10,26 @@ var steering_wheel: Node3D
 var gauge: Label3D
 ## Steering wheel turns per road-wheel degree (set from the wheel rotation).
 var steer_ratio := 8.0
+var ac_steer: Node3D
+var ac_steer_base := Transform3D()
+var procedural_body: Array[Node] = []
 
 
-static func create(v: Vehicle) -> CarVisual:
+static func create(v: Vehicle, ac_model: Dictionary = {}) -> CarVisual:
 	var cv := CarVisual.new()
 	cv.vehicle = v
 	cv._build()
+	if not ac_model.is_empty():
+		# Real Assetto Corsa model: drop the procedural body, keep the wheel
+		# pivots (the model's wheels get moved onto them).
+		for n in cv.procedural_body:
+			n.queue_free()
+		cv.brake_lights = null
+		cv.steering_wheel = null
+		AcCarModel.attach(cv, ac_model)
+		if cv.gauge:
+			cv.gauge.queue_free()  # the real dash is there; HUD shows speed
+			cv.gauge = null
 	return cv
 
 
@@ -35,6 +49,7 @@ func _box(size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	mi.position = pos
 	mi.material_override = mat
 	add_child(mi)
+	procedural_body.append(mi)
 	return mi
 
 
@@ -68,6 +83,10 @@ func _build() -> void:
 		"coupe":
 			cab_len = l * 0.42
 			cab_z = l * 0.06
+		"hardtop":
+			cabin_h *= 0.82
+			cab_len = l * 0.3
+			cab_z = l * 0.03
 		"roadster":
 			cabin_h *= 0.35
 			cab_len = l * 0.22
@@ -92,6 +111,12 @@ func _build() -> void:
 		_build_interior(w, base_y + lower_h * 0.5, cab_y + cabin_h * 0.5, cab_z, cab_len)
 	else:
 		_build_interior(w, base_y + lower_h * 0.5, -1.0, cab_z, l * 0.4)
+	if bool(s.get("wing", false)):
+		var wing_y := base_y + lower_h * 0.5 + 0.32
+		_box(Vector3(w * 0.92, 0.03, 0.28), Vector3(0, wing_y, l * 0.47), paint)
+		for side: float in [-1.0, 1.0]:
+			_box(Vector3(0.02, 0.32, 0.18), Vector3(side * w * 0.3, wing_y - 0.16, l * 0.46), dark)
+			_box(Vector3(0.02, 0.14, 0.32), Vector3(side * w * 0.46, wing_y + 0.03, l * 0.47), paint)
 	# Bumpers, lights.
 	_box(Vector3(w * 1.01, lower_h * 0.35, 0.12), Vector3(0, base_y - lower_h * 0.25, -l * 0.5), dark)
 	_box(Vector3(w * 1.01, lower_h * 0.35, 0.12), Vector3(0, base_y - lower_h * 0.25, l * 0.5), dark)
@@ -142,6 +167,7 @@ func _beam(a: Vector3, b: Vector3, t: float, mat: Material) -> void:
 	mi.mesh = bm
 	mi.material_override = mat
 	add_child(mi)
+	procedural_body.append(mi)
 	var mid := (a + b) * 0.5
 	var up := Vector3.UP if absf((b - a).normalized().dot(Vector3.UP)) < 0.95 else Vector3.RIGHT
 	mi.transform = Transform3D(Basis.looking_at(b - a, up), mid)
@@ -175,6 +201,7 @@ func _build_interior(w: float, belt_y: float, roof_y: float, cab_z: float, cab_l
 	column.position = Vector3(eye.x, eye.y - 0.32, eye.z - 0.46)
 	column.rotation = Vector3(deg_to_rad(68.0), 0, 0)
 	add_child(column)
+	procedural_body.append(column)
 	steering_wheel = Node3D.new()
 	column.add_child(steering_wheel)
 	var rim := MeshInstance3D.new()
@@ -221,7 +248,11 @@ func _process(_dt: float) -> void:
 		pivot.position = wh.mount - Vector3(0, drop, 0)
 		pivot.rotation = Vector3(0, -wh.steer, 0)
 		(pivot.get_node("spin") as Node3D).rotation = Vector3(-wh.spin, 0, 0)
-	brake_lights.emission_energy_multiplier = 3.0 if vehicle.in_brake > 0.1 else 0.3
+	if brake_lights:
+		brake_lights.emission_energy_multiplier = 3.0 if vehicle.in_brake > 0.1 else 0.3
+	if ac_steer:
+		# AC steering wheels turn about their own Z axis.
+		ac_steer.transform = ac_steer_base * Transform3D(Basis(Vector3(0, 0, 1), vehicle.steer_angle * steer_ratio), Vector3.ZERO)
 	if steering_wheel:
 		steering_wheel.rotation.y = -vehicle.steer_angle * steer_ratio
 	if gauge:

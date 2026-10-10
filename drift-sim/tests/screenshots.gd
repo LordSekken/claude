@@ -46,6 +46,10 @@ func _init() -> void:
 	var app: Node = root.get_node("App")
 	if args.size() > 1:
 		app.selected_track_path = args[1]
+	if args.size() > 2:
+		app.selected_car_path = args[2]
+	if args.size() > 3:
+		root.get_node("Settings").ac_root = args[3]
 	main.show_game()
 	var g: Game = main.current
 	var t := 0.0
@@ -73,7 +77,19 @@ func _init() -> void:
 		g.scorer.update(1.0 / 60.0, v.speed, v.drift_angle, v.on_road_wheels >= 2, v.wall_proximity, g.tracker.progress)
 		await process_frame
 		t += 1.0 / 60.0
-		if absf(t - 3.0) < 0.5 / 60.0 or absf(t - 9.3) < 0.5 / 60.0:
+		if absf(t - 0.5) < 0.5 / 60.0:
+			var show := Camera3D.new()
+			g.add_child(show)
+			show.global_position = v.global_transform * Vector3(3.2, 1.3, -4.2)
+			show.look_at(v.global_position + Vector3(0, 0.3, 0), Vector3.UP)
+			show.make_current()
+			await _shot("11_exterior_front")
+			show.global_position = v.global_transform * Vector3(-3.0, 1.2, 4.0)
+			show.look_at(v.global_position + Vector3(0, 0.3, 0), Vector3.UP)
+			await _shot("12_exterior_rear")
+			g.camera.make_current()
+			show.queue_free()
+		if absf(t - 3.0) < 0.5 / 60.0 or absf(t - 9.3) < 0.5 / 60.0 or absf(t - 6.9) < 0.5 / 60.0:
 			g.camera.mode = ChaseCamera.Mode.COCKPIT
 			await _shot("10_cockpit_%d" % int(t))
 			g.camera.mode = ChaseCamera.Mode.CHASE

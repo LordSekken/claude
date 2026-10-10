@@ -228,7 +228,8 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 	var spec := {
 		"name": str(build.get("name", ch.name)),
 		"color": str(build.get("color", ch.get("color", "#c8c8c8"))),
-		"body_style": str(ch.get("body_style", "sedan")),
+		"body_style": str(build.get("body_style", ch.get("body_style", "sedan"))),
+		"wing": bool(build.get("wing", false)),
 		"mass": mass,
 		"length": float(ch.length_m), "width": float(ch.width_m), "height": float(ch.height_m),
 		"wheelbase": L,
@@ -277,6 +278,8 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 		"clutch_nm": maxf(JsonUtil.num(trans, "clutch_max_torque_nm", 0.0), tuned_peak_nm * 1.4),
 		"cda": JsonUtil.num(ch, "cd", 0.34) * JsonUtil.num(ch, "frontal_area_m2", 2.1),
 		"engine_name": str(eng.name),
+		"cylinders": _cylinders(eng),
+		"boxer": str(eng.get("layout", "")).to_lower().begins_with("flat") or str(eng.name).to_lower().contains("subaru ej"),
 		"transmission_name": str(trans.name),
 		"chassis_name": str(ch.name),
 		"driver_side": str(ch.get("driver_side", "left")),
@@ -285,6 +288,16 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 	if stats.hp_per_tonne > 330.0:
 		warnings.append("%.0f hp/tonne is a lot - expect it to be a handful." % stats.hp_per_tonne)
 	return {"ok": true, "spec": spec, "stats": stats, "warnings": warnings, "errors": errors}
+
+
+static func _cylinders(eng: Dictionary) -> int:
+	if eng.has("cylinders"):
+		return int(eng.cylinders)
+	var n := str(eng.get("name", "")).to_upper() + " " + str(eng.get("layout", "")).to_upper()
+	for pair in [["V12", 12], ["V10", 10], ["V8", 8], ["LS3", 8], ["V6", 6], ["I6", 6], ["2JZ", 6], ["1JZ", 6], ["RB2", 6], ["M52", 6], ["FLAT6", 6], ["ROTARY", 2], ["13B", 2], ["I3", 3]]:
+		if n.contains(pair[0]):
+			return pair[1]
+	return 4
 
 
 static func _tire_params(tdef: Dictionary, width_mm: float) -> Dictionary:
@@ -362,8 +375,8 @@ static func compute_stats(spec: Dictionary) -> Dictionary:
 			shift = float(spec.shift_time)
 			continue
 		var f_drive := 0.0
-		if shift <= 0.0:
-			f_drive = torque_at(rpm, nm, minf(eng_rpm, float(spec.limiter_rpm))) * bf * pm * g * final * 0.88 / rw
+		if shift <= 0.0 and eng_rpm < float(spec.limiter_rpm):  # fuel cut at the limiter
+			f_drive = torque_at(rpm, nm, eng_rpm) * bf * pm * g * final * 0.88 / rw
 			f_drive = minf(f_drive, mu * mass * 9.81 * driven_frac * 1.05)
 		shift -= dt
 		var f_drag := 0.5 * 1.2 * float(spec.cda) * v * v + 0.012 * mass * 9.81
