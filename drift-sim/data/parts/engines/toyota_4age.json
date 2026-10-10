@@ -1,0 +1,45 @@
+{
+  "id": "toyota_4age",
+  "name": "Toyota 4A-GE 1.6L 16v (112 hp)",
+  "mass_kg": 115,
+  "idle_rpm": 850,
+  "limiter_rpm": 7600,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      90
+    ],
+    [
+      2000,
+      105
+    ],
+    [
+      3000,
+      115
+    ],
+    [
+      4000,
+      122
+    ],
+    [
+      5000,
+      128
+    ],
+    [
+      5800,
+      131
+    ],
+    [
+      6600,
+      121
+    ],
+    [
+      7600,
+      100
+    ]
+  ],
+  "inertia": 0.12,
+  "displacement_l": 1.6,
+  "max_safe_rpm": 8000
+}

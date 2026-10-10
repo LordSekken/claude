@@ -1,0 +1,64 @@
+{
+  "id": "subaru_ej257_sti",
+  "name": "Subaru EJ257 2.5L turbo (2004+ STI, 300 hp)",
+  "mass_kg": 148,
+  "idle_rpm": 800,
+  "limiter_rpm": 7000,
+  "aspiration": "turbo",
+  "torque_curve": [
+    [
+      1000,
+      140
+    ],
+    [
+      2000,
+      200
+    ],
+    [
+      2500,
+      270
+    ],
+    [
+      3000,
+      360
+    ],
+    [
+      3500,
+      400
+    ],
+    [
+      4000,
+      407
+    ],
+    [
+      4800,
+      390
+    ],
+    [
+      5600,
+      362
+    ],
+    [
+      6000,
+      355
+    ],
+    [
+      6500,
+      320
+    ],
+    [
+      7000,
+      280
+    ]
+  ],
+  "boost_bar": 1.0,
+  "max_boost_bar": 1.45,
+  "spool_rpm": 3200,
+  "turbo_lag_s": 0.55,
+  "inertia": 0.18,
+  "layout": "flat4",
+  "displacement_l": 2.5,
+  "max_safe_rpm": 7300,
+  "turbo": "IHI VF39/VF48",
+  "notes": "300 hp @ 6000, 300 lb-ft @ 4000."
+}

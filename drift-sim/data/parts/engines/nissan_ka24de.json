@@ -1,0 +1,45 @@
+{
+  "id": "nissan_ka24de",
+  "name": "Nissan KA24DE 2.4L (155 hp)",
+  "mass_kg": 155,
+  "idle_rpm": 750,
+  "limiter_rpm": 6500,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      160
+    ],
+    [
+      2000,
+      190
+    ],
+    [
+      3000,
+      205
+    ],
+    [
+      4400,
+      217
+    ],
+    [
+      5000,
+      212
+    ],
+    [
+      5600,
+      198
+    ],
+    [
+      6200,
+      175
+    ],
+    [
+      6500,
+      160
+    ]
+  ],
+  "inertia": 0.2,
+  "displacement_l": 2.4,
+  "max_safe_rpm": 7000
+}

@@ -1,0 +1,64 @@
+{
+  "id": "subaru_ej205_wrx",
+  "name": "Subaru EJ205 2.0L turbo (2002-05 WRX, 227 hp)",
+  "mass_kg": 140,
+  "idle_rpm": 750,
+  "limiter_rpm": 7000,
+  "aspiration": "turbo",
+  "torque_curve": [
+    [
+      1000,
+      130
+    ],
+    [
+      2000,
+      170
+    ],
+    [
+      2500,
+      220
+    ],
+    [
+      3000,
+      270
+    ],
+    [
+      3600,
+      294
+    ],
+    [
+      4000,
+      294
+    ],
+    [
+      4800,
+      285
+    ],
+    [
+      5600,
+      268
+    ],
+    [
+      6000,
+      265
+    ],
+    [
+      6500,
+      240
+    ],
+    [
+      7000,
+      205
+    ]
+  ],
+  "boost_bar": 0.95,
+  "max_boost_bar": 1.3,
+  "spool_rpm": 2900,
+  "turbo_lag_s": 0.45,
+  "inertia": 0.16,
+  "layout": "flat4",
+  "displacement_l": 2.0,
+  "max_safe_rpm": 7400,
+  "turbo": "IHI VF30/TD04 (USDM TD04-13T)",
+  "notes": "Bolts into BG/BK Legacy & Outback with the WRX ECU/harness (very common swap). 227 hp @ 6000, 217 lb-ft @ 4000."
+}

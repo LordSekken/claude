@@ -1,0 +1,36 @@
+{
+  "id": "s14_2jz_drift",
+  "name": "S14 - 2JZ-GTE / R154 pro-am",
+  "chassis": "nissan_240sx_s14",
+  "engine": "toyota_2jz_gte",
+  "transmission": "toyota_r154",
+  "drivetrain": null,
+  "color": "#111111",
+  "tune": {
+    "boost_bar": 1.25,
+    "power_mult": 1.1,
+    "diff": {
+      "type": "lsd",
+      "power": 0.85,
+      "coast": 0.7,
+      "preload_nm": 150
+    },
+    "springs_front_n_mm": 90,
+    "springs_rear_n_mm": 70,
+    "arb_front_n_mm": 35,
+    "arb_rear_n_mm": 10,
+    "ride_height_mm": -55,
+    "steer_lock_deg": 65,
+    "ackermann": 0.15,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 120,
+    "tire_front": {
+      "compound": "sport",
+      "size": "235/40R18"
+    },
+    "tire_rear": {
+      "compound": "semi_slick",
+      "size": "265/35R18"
+    }
+  }
+}

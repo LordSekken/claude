@@ -1,0 +1,41 @@
+{
+  "id": "outback98_wrx_rwd_drift",
+  "name": "'98 Outback - EJ205 swap, RWD drift build",
+  "chassis": "subaru_legacy_outback_1998",
+  "engine": "subaru_ej205_wrx",
+  "transmission": "subaru_ty856_6mt_sti",
+  "drivetrain": "RWD",
+  "color": "#2f4a36",
+  "tune": {
+    "boost_bar": 1.15,
+    "power_mult": 1.08,
+    "rev_limit_rpm": 7200,
+    "final_drive": 3.9,
+    "diff": {
+      "type": "welded"
+    },
+    "springs_front_n_mm": 70,
+    "springs_rear_n_mm": 55,
+    "damp_bump_front": 3600,
+    "damp_rebound_front": 5600,
+    "damp_bump_rear": 3200,
+    "damp_rebound_rear": 5000,
+    "arb_front_n_mm": 30,
+    "arb_rear_n_mm": 6,
+    "ride_height_mm": -95,
+    "steer_lock_deg": 58,
+    "ackermann": 0.25,
+    "brake_bias_front": 0.62,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 110,
+    "tire_front": {
+      "compound": "sport",
+      "size": "225/45R17"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "235/40R17"
+    }
+  },
+  "notes": "Realistic budget Subaru drift recipe: 02-05 WRX EJ205 with an STI 6MT, DCCD locked and front axles pulled (RWD), R180 rear diff welded, 3.9 final, ~1.15 bar on a tune with intake/exhaust (~260-270 whp), coilovers dropping it ~95 mm from Outback height, angle kit to ~58 deg, hydro handbrake, rear seats/spare/carpet out."
+}

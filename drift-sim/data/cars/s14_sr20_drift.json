@@ -1,0 +1,36 @@
+{
+  "id": "s14_sr20_drift",
+  "name": "S14 - SR20DET drift spec",
+  "chassis": "nissan_240sx_s14",
+  "engine": "nissan_sr20det_s14",
+  "transmission": "nissan_fs5w71c",
+  "drivetrain": null,
+  "color": "#d9d9de",
+  "tune": {
+    "boost_bar": 1.0,
+    "power_mult": 1.05,
+    "diff": {
+      "type": "lsd",
+      "power": 0.8,
+      "coast": 0.65,
+      "preload_nm": 120
+    },
+    "springs_front_n_mm": 80,
+    "springs_rear_n_mm": 60,
+    "arb_front_n_mm": 32,
+    "arb_rear_n_mm": 8,
+    "ride_height_mm": -50,
+    "steer_lock_deg": 62,
+    "ackermann": 0.2,
+    "hydro_handbrake": true,
+    "weight_reduction_kg": 60,
+    "tire_front": {
+      "compound": "sport",
+      "size": "225/45R17"
+    },
+    "tire_rear": {
+      "compound": "drift",
+      "size": "235/45R17"
+    }
+  }
+}

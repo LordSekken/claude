@@ -1,0 +1,49 @@
+{
+  "id": "chevrolet_ls3",
+  "name": "Chevrolet LS3 6.2L V8 (430 hp)",
+  "mass_kg": 190,
+  "idle_rpm": 650,
+  "limiter_rpm": 6600,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      400
+    ],
+    [
+      2000,
+      480
+    ],
+    [
+      3000,
+      530
+    ],
+    [
+      4000,
+      565
+    ],
+    [
+      4600,
+      575
+    ],
+    [
+      5200,
+      560
+    ],
+    [
+      5900,
+      519
+    ],
+    [
+      6400,
+      470
+    ],
+    [
+      6600,
+      450
+    ]
+  ],
+  "inertia": 0.3,
+  "displacement_l": 6.2,
+  "max_safe_rpm": 6800
+}

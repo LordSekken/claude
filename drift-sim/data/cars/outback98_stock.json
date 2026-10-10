@@ -1,0 +1,25 @@
+{
+  "id": "outback98_stock",
+  "name": "'98 Legacy Outback (stock)",
+  "chassis": "subaru_legacy_outback_1998",
+  "engine": null,
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#2f4a36",
+  "tune": {
+    "diff": {
+      "type": "open"
+    },
+    "awd_front_split": 0.5,
+    "center_lock_nm": 180,
+    "tire_front": {
+      "compound": "street",
+      "size": "205/70R15"
+    },
+    "tire_rear": {
+      "compound": "street",
+      "size": "205/70R15"
+    }
+  },
+  "notes": "Bone stock: EJ25D, 5MT, viscous centre diff, open rear (R160), all-season tyres."
+}

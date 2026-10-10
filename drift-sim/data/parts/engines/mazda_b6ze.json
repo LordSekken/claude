@@ -1,0 +1,41 @@
+{
+  "id": "mazda_b6ze",
+  "name": "Mazda B6ZE 1.6L (115 hp)",
+  "mass_kg": 100,
+  "idle_rpm": 850,
+  "limiter_rpm": 7200,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      95
+    ],
+    [
+      2000,
+      110
+    ],
+    [
+      3000,
+      120
+    ],
+    [
+      4000,
+      128
+    ],
+    [
+      5500,
+      136
+    ],
+    [
+      6500,
+      126
+    ],
+    [
+      7200,
+      110
+    ]
+  ],
+  "inertia": 0.11,
+  "displacement_l": 1.6,
+  "max_safe_rpm": 7400
+}

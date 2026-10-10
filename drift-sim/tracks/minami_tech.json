@@ -1,0 +1,131 @@
+{
+ "name": "Minami Tech",
+ "author": "Drift Lab",
+ "description": "Tight and technical with walls close enough to kiss. Inspired by Japanese mountain-circuit drift courses.",
+ "closed": true,
+ "points": [
+  [
+   0,
+   0
+  ],
+  [
+   60,
+   0
+  ],
+  [
+   100,
+   10
+  ],
+  [
+   118,
+   40
+  ],
+  [
+   110,
+   75
+  ],
+  [
+   80,
+   90
+  ],
+  [
+   50,
+   85
+  ],
+  [
+   30,
+   100
+  ],
+  [
+   35,
+   130
+  ],
+  [
+   65,
+   145
+  ],
+  [
+   100,
+   150
+  ],
+  [
+   125,
+   175
+  ],
+  [
+   110,
+   205
+  ],
+  [
+   70,
+   210
+  ],
+  [
+   20,
+   200
+  ],
+  [
+   -20,
+   180
+  ],
+  [
+   -45,
+   150
+  ],
+  [
+   -40,
+   110
+  ],
+  [
+   -55,
+   75
+  ],
+  [
+   -50,
+   35
+  ],
+  [
+   -30,
+   8
+  ]
+ ],
+ "width": 11,
+ "runoff": 2.5,
+ "runoff_surface": "asphalt",
+ "walls": {
+  "left": true,
+  "right": true,
+  "height": 1.0
+ },
+ "kerbs": false,
+ "zones": [
+  {
+   "name": "Wall Run",
+   "start": 0.05,
+   "end": 0.3
+  },
+  {
+   "name": "Back Section",
+   "start": 0.55,
+   "end": 0.85
+  }
+ ],
+ "clips": [
+  {
+   "t": 0.17,
+   "side": "left",
+   "radius": 2.0
+  },
+  {
+   "t": 0.7,
+   "side": "left",
+   "radius": 2.0
+  }
+ ],
+ "start": 0.98,
+ "scenery": {
+  "seed": 3,
+  "density": 1.4,
+  "time_of_day": "night"
+ }
+}

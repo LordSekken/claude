@@ -1,0 +1,18 @@
+{
+  "id": "subaru_ty856_6mt_sti",
+  "name": "Subaru TY856 6-speed (STI, DCCD)",
+  "gear_ratios": [
+    3.636,
+    2.375,
+    1.761,
+    1.346,
+    0.971,
+    0.756
+  ],
+  "final_drive": 3.9,
+  "reverse_ratio": 3.545,
+  "max_torque_nm": 600,
+  "mass_kg": 75,
+  "shift_time_s": 0.18,
+  "notes": "The strong swap box. Lock the DCCD + pull front axles for a RWD conversion."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "bmw_zf_s5d250g",
+  "name": "BMW ZF S5D 250G 5-speed",
+  "gear_ratios": [
+    4.23,
+    2.52,
+    1.66,
+    1.22,
+    1.0
+  ],
+  "final_drive": 2.93,
+  "reverse_ratio": 4.04,
+  "max_torque_nm": 320,
+  "mass_kg": 45,
+  "shift_time_s": 0.22
+}

@@ -1,0 +1,16 @@
+{
+  "id": "toyota_r154",
+  "name": "Toyota R154 5-speed",
+  "gear_ratios": [
+    3.251,
+    1.955,
+    1.31,
+    1.0,
+    0.753
+  ],
+  "final_drive": 3.909,
+  "reverse_ratio": 3.18,
+  "max_torque_nm": 540,
+  "mass_kg": 60,
+  "shift_time_s": 0.2
+}

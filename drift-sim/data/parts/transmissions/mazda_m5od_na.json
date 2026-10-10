@@ -1,0 +1,16 @@
+{
+  "id": "mazda_m5od_na",
+  "name": "Mazda M5OD 5-speed (NA)",
+  "gear_ratios": [
+    3.136,
+    1.888,
+    1.33,
+    1.0,
+    0.814
+  ],
+  "final_drive": 4.3,
+  "reverse_ratio": 3.758,
+  "max_torque_nm": 200,
+  "mass_kg": 35,
+  "shift_time_s": 0.18
+}

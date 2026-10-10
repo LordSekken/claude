@@ -1,5 +1,7 @@
 # Intersection Editor
 
+> This repo also contains **[Drift Lab](drift-sim/README.md)**, a Windows drift simulator with modular real-world cars, photo-to-track generation and Forza-style scoring, in `drift-sim/`.
+
 A lightweight browser tool for looking at a real intersection and redesigning
 it — e.g. dropping a two-lane spiral roundabout onto Shaw & Pioneer — without
 needing full civil-engineering CAD software.

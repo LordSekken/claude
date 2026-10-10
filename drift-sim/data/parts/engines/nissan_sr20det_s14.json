@@ -1,0 +1,54 @@
+{
+  "id": "nissan_sr20det_s14",
+  "name": "Nissan SR20DET 2.0L turbo (S14 kouki, 220 PS)",
+  "mass_kg": 145,
+  "idle_rpm": 800,
+  "limiter_rpm": 7500,
+  "aspiration": "turbo",
+  "torque_curve": [
+    [
+      1000,
+      120
+    ],
+    [
+      2000,
+      160
+    ],
+    [
+      3000,
+      240
+    ],
+    [
+      4000,
+      270
+    ],
+    [
+      4800,
+      275
+    ],
+    [
+      5600,
+      270
+    ],
+    [
+      6000,
+      262
+    ],
+    [
+      6800,
+      230
+    ],
+    [
+      7500,
+      190
+    ]
+  ],
+  "boost_bar": 0.7,
+  "max_boost_bar": 1.2,
+  "spool_rpm": 3200,
+  "turbo_lag_s": 0.5,
+  "inertia": 0.16,
+  "displacement_l": 2.0,
+  "max_safe_rpm": 7800,
+  "turbo": "Garrett T28"
+}

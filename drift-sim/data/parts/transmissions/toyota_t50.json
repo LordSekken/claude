@@ -1,0 +1,16 @@
+{
+  "id": "toyota_t50",
+  "name": "Toyota T50 5-speed",
+  "gear_ratios": [
+    3.587,
+    2.022,
+    1.384,
+    1.0,
+    0.861
+  ],
+  "final_drive": 4.3,
+  "reverse_ratio": 3.484,
+  "max_torque_nm": 180,
+  "mass_kg": 38,
+  "shift_time_s": 0.2
+}

@@ -1,0 +1,31 @@
+{
+  "id": "miata_na_drift",
+  "name": "NA Miata - LS3 swap (why not)",
+  "chassis": "mazda_mx5_na",
+  "engine": "chevrolet_ls3",
+  "transmission": "toyota_r154",
+  "drivetrain": null,
+  "color": "#b3121b",
+  "tune": {
+    "diff": {
+      "type": "lsd",
+      "power": 0.8,
+      "coast": 0.6,
+      "preload_nm": 100
+    },
+    "springs_front_n_mm": 60,
+    "springs_rear_n_mm": 50,
+    "ride_height_mm": -30,
+    "steer_lock_deg": 55,
+    "ackermann": 0.3,
+    "hydro_handbrake": true,
+    "tire_front": {
+      "compound": "sport",
+      "size": "215/45R17"
+    },
+    "tire_rear": {
+      "compound": "semi_slick",
+      "size": "245/40R17"
+    }
+  }
+}

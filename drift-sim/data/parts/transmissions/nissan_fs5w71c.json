@@ -1,0 +1,16 @@
+{
+  "id": "nissan_fs5w71c",
+  "name": "Nissan FS5W71C 5-speed",
+  "gear_ratios": [
+    3.321,
+    1.902,
+    1.308,
+    1.0,
+    0.759
+  ],
+  "final_drive": 4.083,
+  "reverse_ratio": 3.382,
+  "max_torque_nm": 380,
+  "mass_kg": 50,
+  "shift_time_s": 0.2
+}

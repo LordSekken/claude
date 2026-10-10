@@ -1,0 +1,27 @@
+{
+  "id": "ae86_4age",
+  "name": "AE86 - 4A-GE touge",
+  "chassis": "toyota_ae86",
+  "engine": null,
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#f2f2f2",
+  "tune": {
+    "diff": {
+      "type": "lsd",
+      "power": 0.6,
+      "coast": 0.4,
+      "preload_nm": 60
+    },
+    "ride_height_mm": -30,
+    "steer_lock_deg": 45,
+    "tire_front": {
+      "compound": "sport",
+      "size": "195/55R15"
+    },
+    "tire_rear": {
+      "compound": "sport",
+      "size": "195/55R15"
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "subaru_ty754_5mt",
+  "name": "Subaru TY754 5-speed manual (AWD, viscous centre)",
+  "gear_ratios": [
+    3.454,
+    1.947,
+    1.296,
+    0.972,
+    0.738
+  ],
+  "final_drive": 4.111,
+  "reverse_ratio": 3.333,
+  "max_torque_nm": 330,
+  "mass_kg": 58,
+  "shift_time_s": 0.22,
+  "notes": "1996-99 Legacy/Outback 5MT. Fine at stock power; the 5MT is the weak link past ~350 Nm."
+}

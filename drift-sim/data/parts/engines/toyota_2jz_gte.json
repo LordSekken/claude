@@ -1,0 +1,50 @@
+{
+  "id": "toyota_2jz_gte",
+  "name": "Toyota 2JZ-GTE 3.0L twin-turbo I6 (320 hp)",
+  "mass_kg": 230,
+  "idle_rpm": 750,
+  "limiter_rpm": 6800,
+  "aspiration": "turbo",
+  "torque_curve": [
+    [
+      1000,
+      180
+    ],
+    [
+      2000,
+      260
+    ],
+    [
+      3000,
+      380
+    ],
+    [
+      4000,
+      427
+    ],
+    [
+      4800,
+      420
+    ],
+    [
+      5600,
+      407
+    ],
+    [
+      6200,
+      370
+    ],
+    [
+      6800,
+      320
+    ]
+  ],
+  "boost_bar": 0.8,
+  "max_boost_bar": 1.4,
+  "spool_rpm": 3300,
+  "turbo_lag_s": 0.55,
+  "inertia": 0.25,
+  "displacement_l": 3.0,
+  "max_safe_rpm": 7200,
+  "turbo": "Sequential CT12B x2"
+}

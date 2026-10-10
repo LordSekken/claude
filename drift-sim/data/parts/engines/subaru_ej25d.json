@@ -1,0 +1,47 @@
+{
+  "id": "subaru_ej25d",
+  "name": "Subaru EJ25D 2.5L DOHC flat-4 (165 hp)",
+  "mass_kg": 125,
+  "idle_rpm": 700,
+  "limiter_rpm": 6300,
+  "aspiration": "na",
+  "torque_curve": [
+    [
+      1000,
+      150
+    ],
+    [
+      2000,
+      185
+    ],
+    [
+      3000,
+      205
+    ],
+    [
+      4000,
+      220
+    ],
+    [
+      4800,
+      215
+    ],
+    [
+      5600,
+      205
+    ],
+    [
+      6000,
+      190
+    ],
+    [
+      6300,
+      175
+    ]
+  ],
+  "inertia": 0.17,
+  "layout": "flat4",
+  "displacement_l": 2.5,
+  "max_safe_rpm": 6700,
+  "notes": "1996-99 Legacy/Outback. 165 hp @ 5600, 162 lb-ft @ 4000. Known for head-gasket issues."
+}

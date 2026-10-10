@@ -1,0 +1,28 @@
+{
+  "id": "e36_328i_welded",
+  "name": "E36 328i - welded diff starter",
+  "chassis": "bmw_e36_328i",
+  "engine": null,
+  "transmission": null,
+  "drivetrain": null,
+  "color": "#1f3a6b",
+  "tune": {
+    "diff": {
+      "type": "welded"
+    },
+    "springs_front_n_mm": 55,
+    "springs_rear_n_mm": 60,
+    "ride_height_mm": -40,
+    "steer_lock_deg": 50,
+    "ackermann": 0.4,
+    "hydro_handbrake": true,
+    "tire_front": {
+      "compound": "sport",
+      "size": "225/45R17"
+    },
+    "tire_rear": {
+      "compound": "street",
+      "size": "225/45R17"
+    }
+  }
+}

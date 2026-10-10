@@ -1,0 +1,41 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="Drift Lab"
+config/description="Drift simulator with procedural / photo-generated tracks and Forza-style drift scoring."
+config/version="0.1.0"
+run/main_scene="res://scenes/main.tscn"
+config/icon="res://icon.svg"
+config/features=PackedStringArray("4.4", "Forward Plus")
+config/use_custom_user_dir=true
+config/custom_user_dir_name="DriftLab"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[physics]
+
+common/physics_ticks_per_second=240
+common/max_physics_steps_per_frame=12
+3d/default_gravity=9.81
+
+[layer_names]
+
+3d_physics/layer_1="ground"
+3d_physics/layer_2="walls"
+3d_physics/layer_3="car"
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
+
+[autoload]
+
+Settings="*res://scripts/core/settings.gd"
+App="*res://scripts/core/app.gd"

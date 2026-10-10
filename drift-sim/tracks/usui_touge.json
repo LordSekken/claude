@@ -1,0 +1,126 @@
+{
+ "name": "Usui Downhill",
+ "author": "Drift Lab",
+ "description": "Point-to-point downhill with guardrails both sides. Mind the hairpins.",
+ "closed": false,
+ "points": [
+  [
+   0,
+   0,
+   60.0
+  ],
+  [
+   80,
+   -10,
+   56.5
+  ],
+  [
+   150,
+   -40,
+   52.9
+  ],
+  [
+   190,
+   -100,
+   49.4
+  ],
+  [
+   170,
+   -160,
+   45.9
+  ],
+  [
+   110,
+   -190,
+   42.4
+  ],
+  [
+   60,
+   -240,
+   38.8
+  ],
+  [
+   80,
+   -300,
+   35.3
+  ],
+  [
+   150,
+   -320,
+   31.8
+  ],
+  [
+   220,
+   -300,
+   28.2
+  ],
+  [
+   270,
+   -340,
+   24.7
+  ],
+  [
+   260,
+   -410,
+   21.2
+  ],
+  [
+   200,
+   -450,
+   17.6
+  ],
+  [
+   150,
+   -500,
+   14.1
+  ],
+  [
+   180,
+   -560,
+   10.6
+  ],
+  [
+   250,
+   -590,
+   7.1
+  ],
+  [
+   330,
+   -580,
+   3.5
+  ],
+  [
+   400,
+   -620,
+   0.0
+  ]
+ ],
+ "width": 8.5,
+ "runoff": 1.5,
+ "runoff_surface": "dirt",
+ "walls": {
+  "left": true,
+  "right": true,
+  "height": 0.9
+ },
+ "kerbs": false,
+ "zones": [
+  {
+   "name": "Upper Hairpins",
+   "start": 0.08,
+   "end": 0.4
+  },
+  {
+   "name": "Lower Esses",
+   "start": 0.6,
+   "end": 0.95
+  }
+ ],
+ "clips": [],
+ "start": 0.0,
+ "scenery": {
+  "seed": 11,
+  "density": 1.8,
+  "time_of_day": "day"
+ }
+}
