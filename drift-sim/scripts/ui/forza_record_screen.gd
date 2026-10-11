@@ -34,7 +34,8 @@ func _ready() -> void:
 	head.add_child(UiUtil.button("< Menu", func() -> void: navigate.emit("menu")))
 	head.add_child(UiUtil.title("  Record from Forza"))
 	vb.add_child(head)
-	vb.add_child(UiUtil.label("In Forza: Settings > HUD and Gameplay > Data Out = ON, Data Out IP = 127.0.0.1 (or this PC's IP if Forza runs on an Xbox), port = the number below. Then press Listen, drive to the start of the zone, press Record, drive it, press Stop. For exact road width, also record a pass hugging the left edge and one hugging the right edge.", 15, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("In Forza: Settings > HUD and Gameplay > Data Out = ON, Data Out IP = 127.0.0.1 (or this PC's IP if Forza runs on an Xbox), port = the number below. Press Listen and drive a few metres until the line below shows your position.", 15, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("For an exact copy record 3 passes, each from the same start point to the same end point:\n  1. Hugging the LEFT edge - slowly, left tyres right on the edge of the tarmac (kerbs are fine, grass is ignored).\n  2. Hugging the RIGHT edge - the same on the right.\n  3. Your driving line - drift it like normal.\nThe edges set the turns, road width and camber; elevation comes from every pass; kerbs come from where Forza says your tyres hit a rumble strip.", 15, Color(0.75, 0.75, 0.8)))
 	_port = SpinBox.new()
 	_port.min_value = 1024
 	_port.max_value = 65535
@@ -119,7 +120,7 @@ func _update_list() -> void:
 	var lines := []
 	for i in passes.size():
 		var p: ForzaTelemetry.Pass = passes[i]
-		lines.append("%d. %s - %d m" % [i + 1, {"line": "driving line", "left": "left edge", "right": "right edge"}[p.role], int(p.length())])
+		lines.append("%d. %s - %d m, kerb contact at %d points" % [i + 1, {"line": "driving line", "left": "left edge", "right": "right edge"}[p.role], int(p.length()), p.kerb_count()])
 	_list.text = "\n".join(lines)
 
 
@@ -144,8 +145,24 @@ func _process(dt: float) -> void:
 			_live.text = "Listening on port %d - %d packets/s%s" % [int(_port.value), int(_pkt_rate), "" if _pkt_rate > 0 else " (nothing yet: check Data Out is ON and the IP/port match)"] + (" (drive a little so the format can be detected)" if _pkt_rate > 0 else "")
 		else:
 			var p: Vector3 = _last.pos
-			_live.text = "%s · %d packets/s · %d km/h · position %.1f, %.1f, %.1f%s" % [tele.format_name, int(_pkt_rate), int(float(_last.speed) * 3.6), p.x, p.y, p.z,
-				("   ● RECORDING %d m" % int(current.length())) if recording and current else ""]
+			_live.text = "%s · %d packets/s · %d km/h · position %.1f, %.1f, %.1f · %s%s" % [tele.format_name, int(_pkt_rate), int(float(_last.speed) * 3.6), p.x, p.y, p.z,
+				_surface_text(_last), ("   ● RECORDING %d m" % int(current.length())) if recording and current else ""]
+
+
+## Live per-wheel surface readout so you can see kerbs/grass being picked up.
+func _surface_text(s: Dictionary) -> String:
+	var k := int(s.get("kerb", 0))
+	var rum: PackedFloat32Array = s.get("rumble", PackedFloat32Array([0, 0, 0, 0]))
+	var parts := []
+	if k & (ForzaTelemetry.FL | ForzaTelemetry.RL):
+		parts.append("KERB left")
+	if k & (ForzaTelemetry.FR | ForzaTelemetry.RR):
+		parts.append("KERB right")
+	var l := (rum[0] + rum[2]) * 0.5
+	var r := (rum[1] + rum[3]) * 0.5
+	if parts.is_empty():
+		parts.append("surface L %.2f / R %.2f" % [l, r])
+	return ", ".join(parts)
 
 
 func _make() -> void:
@@ -157,6 +174,12 @@ func _make() -> void:
 	var info: Dictionary = r.info
 	var v := TrackSpec.validate(result_spec)
 	var txt := "[color=#66ff88]Track built: %d m, %s, avg width %.1f m%s, elevation change %.1f m.[/color]\n" % [int(info.length_m), "loop" if info.closed else "point-to-point", float(info.width_m), " (from edge passes)" if info.edges else " (set by hand)", float(info.elevation_m)]
+	if info.edges:
+		txt += "Edges found along %d%% of the road, max camber %.1f%%%s.\n" % [int(float(info.edge_cover) * 100.0), float(info.max_bank_pct),
+			(", ignored %d off-road edge points" % int(info.offroad_dropped)) if int(info.offroad_dropped) > 0 else ""]
+	elif bool(info.one_edge_only):
+		txt += "[color=#ffcc66]Only one edge pass - record the other edge too for exact width and position.[/color]\n"
+	txt += ("Kerbs: %d sections from rumble-strip contact.\n" % int(info.kerbs)) if int(info.kerbs) > 0 else "No kerb contact recorded (no kerbs added).\n"
 	for e: String in v.errors:
 		txt += "[color=#ff6666]✖ %s[/color]\n" % e
 	for w: String in v.warnings:

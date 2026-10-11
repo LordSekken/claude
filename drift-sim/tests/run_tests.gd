@@ -299,49 +299,77 @@ func test_kn5() -> void:
 	check(AcPaths.resolve({"path": "/nonexistent/car"}).is_empty() or true, "AcPaths.resolve handles missing folders")
 
 
-func _forza_packet(horizon: bool, pos: Vector3, speed: float, accel_x: float) -> PackedByteArray:
+func _forza_packet(off: int, size: int, pos: Vector3, speed: float, accel_x: float, kerb := 0, rum := [0.05, 0.05, 0.05, 0.05]) -> PackedByteArray:
 	var b := PackedByteArray()
-	b.resize(324 if horizon else 311)
+	b.resize(size)
 	b.encode_s32(0, 1)                       # race on
 	b.encode_float(20, accel_x)              # local lateral accel (+ right)
 	b.encode_float(40, speed)                # local forward velocity
-	var o := 244 if horizon else 232
-	b.encode_float(o, pos.x)
-	b.encode_float(o + 4, pos.y)
-	b.encode_float(o + 8, pos.z)
-	b.encode_float(o + 12, speed)
+	for w in 4:
+		b.encode_s32(116 + w * 4, 1 if kerb & (1 << w) else 0)
+		b.encode_float(148 + w * 4, float(rum[w]))
+	b.encode_float(off, pos.x)
+	b.encode_float(off + 4, pos.y)
+	b.encode_float(off + 8, pos.z)
+	b.encode_float(off + 12, speed)
 	return b
 
 
 func test_forza() -> void:
-	for horizon in [true, false]:
+	# [label, dash offset, packet size]: FH4/5, FM7, and an unknown newer layout (scan).
+	for fmt in [["FH", 244, 324], ["FM7", 232, 311], ["new", 260, 340]]:
 		for mirrored in [false, true]:
 			var t := ForzaTelemetry.new()
 			var passes := []
-			for role_r in [["line", 60.0], ["left", 65.0], ["right", 55.0]]:
+			# Right-hand loop (centre on the right). Road edges at r=65 (left) and
+			# r=55 (right); edge passes drive the car centre 0.9 m inside them.
+			# The driving line is NOT the road centre (r=58), the right side is
+			# 0.5 m higher (camber), the left pass runs onto the grass for a bit,
+			# and the line pass hits the right-hand kerb once.
+			for role_r in [["line", 58.0], ["left", 64.1], ["right", 55.9]]:
 				var ps := ForzaTelemetry.Pass.new()
 				ps.role = role_r[0]
-				var r: float = role_r[1]
-				# Clockwise from above in Drift Lab's frame = right-hand turns.
 				for i in 900:
 					var a := TAU * i / 880.0  # heading +Z with centre on the right
-					var ours := Vector3(r * cos(a), 5.0 * sin(a), r * sin(a))
+					var r: float = role_r[1]
+					var rum := [0.05, 0.05, 0.05, 0.05]
+					var kerb := 0
+					if ps.role == "left" and i >= 300 and i < 330:
+						r += 3.0                       # off the road...
+						rum = [0.8, 0.05, 0.8, 0.05]   # ...left wheels in the grass
+					if ps.role == "line" and i >= 600 and i < 640:
+						kerb = ForzaTelemetry.FR | ForzaTelemetry.RR
+					var y := 5.0 * sin(a) + (60.0 - r) * 0.05  # higher toward the inside (right)
+					var ours := Vector3(60.0 + r * cos(a) - 60.0, y, r * sin(a))
 					var forza := Vector3(-ours.x if mirrored else ours.x, ours.y, ours.z)
-					var s := t.parse(_forza_packet(horizon, forza, 20.0, 4.0))
+					var s := t.parse(_forza_packet(fmt[1], fmt[2], forza, 20.0, 4.0, kerb, rum))
 					if not s.is_empty():
 						ps.add(s)
 				passes.append(ps)
-			var label := "%s %s" % ["FH" if horizon else "FM7", "mirrored" if mirrored else "plain"]
-			check(t.dash_offset == (244 if horizon else 232), "forza %s: layout detected from speed (%d)" % [label, t.dash_offset])
+			var label := "%s %s" % [fmt[0], "mirrored" if mirrored else "plain"]
+			check(t.dash_offset == fmt[1], "forza %s: layout detected from speed (%d)" % [label, t.dash_offset])
 			var r := ForzaTelemetry.build_track(passes, "Test Zone")
 			check(r.ok, "forza %s: track built" % label)
 			if not r.ok:
 				continue
 			check(bool(r.info.mirrored) == mirrored, "forza %s: handedness detected from lateral g" % label)
 			check(bool(r.info.closed), "forza %s: loop detected" % label)
-			check(absf(float(r.info.length_m) - TAU * 60.0) < 25.0, "forza %s: length %.0f m ~ %.0f" % [label, r.info.length_m, TAU * 60.0])
-			check(absf(float(r.info.width_m) - 11.8) < 1.5, "forza %s: width from edge passes %.1f m" % [label, r.info.width_m])
+			check(absf(float(r.info.length_m) - TAU * 60.0) < 25.0, "forza %s: centred between the edges, length %.0f m ~ %.0f" % [label, r.info.length_m, TAU * 60.0])
+			var ws: Array = r.spec.widths
+			var wmax := 0.0
+			for w: float in ws:
+				wmax = maxf(wmax, w)
+			check(absf(float(r.info.width_m) - 10.0) < 0.6 and wmax < 11.0, "forza %s: width from edges %.1f m (max %.1f, grass excursion ignored)" % [label, r.info.width_m, wmax])
+			check(int(r.info.offroad_dropped) >= 10, "forza %s: off-road edge points dropped (%d)" % [label, r.info.offroad_dropped])
 			check(absf(float(r.info.elevation_m) - 10.0) < 1.5, "forza %s: elevation kept (%.1f m)" % [label, r.info.elevation_m])
+			var bs: Array = r.spec.banks
+			var bavg := 0.0
+			for bk: float in bs:
+				bavg += bk
+			bavg /= bs.size()
+			check(absf(bavg - 0.041) < 0.012, "forza %s: camber from edge heights (%.3f ~ 0.041)" % [label, bavg])
+			var kr: Array = r.spec.get("kerb_ranges", [])
+			check(kr.size() == 1 and kr[0].side == "right" and float(kr[0].start) > 0.6 and float(kr[0].end) < 0.78, "forza %s: kerb from rumble strip on the right (%s)" % [label, str(kr)])
 			var smp := TrackSpec.sample(r.spec, 2.0)
 			var right := 0
 			for k: float in smp.curvature:
@@ -349,6 +377,28 @@ func test_forza() -> void:
 					right += 1
 			check(right > (smp.curvature as PackedFloat32Array).size() * 0.8, "forza %s: corners turn the right way" % label)
 			check((TrackSpec.validate(r.spec).errors as Array).is_empty(), "forza %s: track validates" % label)
+			if fmt[0] == "FH" and not mirrored:
+				var built := TrackBuilder.build(r.spec)
+				var root: Node3D = built.root
+				var kerb_found := false
+				for c in root.get_children():
+					if str(c.name).begins_with("1KERB"):
+						kerb_found = true
+				check(kerb_found, "forza: recorded kerb built into the track")
+				# Camber: the right edge of the built road sits higher than the left.
+				var ss := TrackSpec.sample(r.spec, 2.0)
+				var i0 := 10
+				var hl := TrackBuilder._pt(ss, i0, -float(ss.width[i0]) * 0.5).y
+				var hr := TrackBuilder._pt(ss, i0, float(ss.width[i0]) * 0.5).y
+				check(hr - hl > 0.25, "forza: built road is cambered (%.2f m)" % (hr - hl))
+				root.free()
+		# Recordings round-trip with surface data.
+	var p2 := ForzaTelemetry.Pass.new()
+	p2.add({"pos": Vector3.ZERO, "accel_x": 0.0, "kerb": 3, "rumble": PackedFloat32Array([0.1, 0.2, 0.3, 0.4])})
+	var back := ForzaTelemetry.Pass.from_dict(p2.to_dict())
+	check(back.kerb[0] == 3 and absf(back.rumble_r[0] - 0.3) < 0.001, "forza: recording keeps kerb/surface data")
+	var old := ForzaTelemetry.Pass.from_dict({"role": "line", "points": [[1, 2, 3, 0.5]]})
+	check(old.kerb.size() == 1 and old.kerb[0] == 0, "forza: old recordings still load")
 
 
 func test_physics() -> void:

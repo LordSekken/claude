@@ -7,6 +7,10 @@ extends RefCounted
 ##   "closed": true,
 ##   "points": [[x, z], [x, z, elevation], ...],   // centreline control points, metres
 ##   "width": 12.0, "widths": [optional per control point],
+##   "banks": [optional per control point: crossfall, right edge height minus
+##             left edge height divided by width (0.05 = 5%, right side higher)],
+##   "kerb_ranges": [optional {"side": "left"|"right", "start": 0.1, "end": 0.12}]
+##             explicit kerbs (track fractions); without it kerbs go on corners
 ##   "runoff": 4.0, "runoff_surface": "grass" | "asphalt" | "gravel" | "dirt",
 ##   "walls": {"left": true, "right": true, "height": 1.2},
 ##   "kerbs": true,
@@ -76,8 +80,10 @@ static func sample(spec: Dictionary, spacing := 2.0) -> Dictionary:
 	var n := cp.size()
 	var widths: Array = spec.get("widths", [])
 	var base_w := float(spec.get("width", 12.0))
+	var banks: Array = spec.get("banks", [])
 	var dense := PackedVector3Array()
 	var dense_w := PackedFloat32Array()
+	var dense_b := PackedFloat32Array()
 	if n < 2:
 		return {"pos": dense, "length": 0.0, "closed": closed}
 	var seg_count := n if closed else n - 1
@@ -92,14 +98,18 @@ static func sample(spec: Dictionary, spacing := 2.0) -> Dictionary:
 			p3 = p2 * 2.0 - p1
 		var w1 := float(widths[i]) if i < widths.size() else base_w
 		var w2 := float(widths[(i + 1) % n]) if (i + 1) % n < widths.size() else base_w
+		var b1 := float(banks[i]) if i < banks.size() else 0.0
+		var b2 := float(banks[(i + 1) % n]) if (i + 1) % n < banks.size() else 0.0
 		var steps := maxi(4, int(p1.distance_to(p2) / (spacing * 0.5)))
 		for k in steps:
 			var t := float(k) / steps
 			dense.append(_catmull(p0, p1, p2, p3, t))
 			dense_w.append(lerpf(w1, w2, t))
+			dense_b.append(lerpf(b1, b2, t))
 	if not closed:
 		dense.append(cp[n - 1])
 		dense_w.append(float(widths[n - 1]) if n - 1 < widths.size() else base_w)
+		dense_b.append(float(banks[n - 1]) if n - 1 < banks.size() else 0.0)
 
 	# Resample uniformly by arc length.
 	var cum := PackedFloat32Array([0.0])
@@ -111,6 +121,7 @@ static func sample(spec: Dictionary, spacing := 2.0) -> Dictionary:
 	var count := maxi(int(total / spacing), 8)
 	var pos := PackedVector3Array()
 	var width := PackedFloat32Array()
+	var bank := PackedFloat32Array()
 	var dist := PackedFloat32Array()
 	var j := 0
 	var last := count if closed else count + 1
@@ -122,6 +133,7 @@ static func sample(spec: Dictionary, spacing := 2.0) -> Dictionary:
 		var t := clampf((d - cum[j]) / seg, 0.0, 1.0)
 		pos.append(dense[j].lerp(dense[(j + 1) % m], t))
 		width.append(lerpf(dense_w[j], dense_w[(j + 1) % m], t))
+		bank.append(clampf(lerpf(dense_b[j], dense_b[(j + 1) % m], t), -0.15, 0.15))
 		dist.append(d)
 	var cnt := pos.size()
 	var tangent := PackedVector3Array()
@@ -146,7 +158,7 @@ static func sample(spec: Dictionary, spacing := 2.0) -> Dictionary:
 		var t1 := tangent[(i + 1) % cnt]
 		var cross := t0.x * t1.z - t0.z * t1.x
 		curvature[i] = asin(clampf(cross, -1.0, 1.0)) / (2.0 * spacing)  # +: turning right
-	return {"pos": pos, "tangent": tangent, "right": right, "width": width, "dist": dist,
+	return {"pos": pos, "tangent": tangent, "right": right, "width": width, "bank": bank, "dist": dist,
 		"curvature": curvature, "length": total, "closed": closed, "spacing": total / count}
 
 

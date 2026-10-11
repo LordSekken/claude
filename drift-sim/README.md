@@ -85,10 +85,15 @@ Needs an Anthropic API key (Settings, or the `ANTHROPIC_API_KEY` environment var
 Rebuild your favourite Forza Horizon / Motorsport drift zones by driving them:
 1. In Forza: **Settings → HUD and Gameplay → Data Out: ON**, IP `127.0.0.1` (or this PC's IP if Forza runs on an Xbox), port `5300`.
 2. Drift Lab → **Record from Forza** → **Listen**. The live line shows packets arriving, speed and position.
-3. Drive to the start of the zone, press **Record**, drive it, press **Stop**. For exact road width, add a pass hugging the **left edge** and one hugging the **right edge**.
-4. **Make track** builds the real layout, corners and elevation, from the car's world position (~60 samples/s). Then **Open in Track Editor** (walls, zones, clips), **Save + Drive**, or **Export for Assetto Corsa**.
+3. Record three passes from the same start to the same end: hugging the **left edge** (slowly, tyres on the edge of the tarmac), hugging the **right edge**, then your **driving line**. Press **Record** / **Stop** for each.
+4. **Make track** builds the real layout from the car's world position (~60 samples/s):
+   - the road centre and width come from the two edges (not from your drift line), matched along the road so hairpins don't snap to the other side of the hill;
+   - camber comes from the height difference between the edges; elevation from every pass;
+   - kerbs go exactly where Forza reported a tyre on a rumble strip;
+   - edge points where the outer tyres were in the grass/dirt (much more surface rumble than the inner tyres) are ignored, so running wide doesn't widen the road.
+   Then **Open in Track Editor** (walls, zones, clips), **Save + Drive**, or **Export for Assetto Corsa**.
 
-Recordings are saved to `%APPDATA%\DriftLab\recordings` so they can be shared or rebuilt later. The game's layout (Horizon vs Motorsport packets) and its axis handedness are detected from the physics (speed vs. velocity, lateral g in corners), not hard-coded.
+Recordings are saved to `%APPDATA%\DriftLab\recordings` so they can be shared or rebuilt later. The game's packet layout and its axis handedness are detected from the physics (speed vs. velocity, lateral g in corners), not hard-coded, so newer games (e.g. Forza Horizon 6) with a shifted layout are found by scanning the packet.
 
 ## Scoring (Forza-style)
 

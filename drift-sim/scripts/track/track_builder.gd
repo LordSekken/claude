@@ -104,7 +104,6 @@ static func _add_surface(root: Node3D, mesh: ArrayMesh, mat: Material, surface: 
 ## Generic strip between two offset curves (offsets in metres from centreline).
 static func _strip(samples: Dictionary, off_a: PackedFloat32Array, off_b: PackedFloat32Array, y_a := 0.0, y_b := 0.0, mask := PackedByteArray(), colors := PackedColorArray()) -> ArrayMesh:
 	var pos: PackedVector3Array = samples.pos
-	var right: PackedVector3Array = samples.right
 	var dist: PackedFloat32Array = samples.dist
 	var n := pos.size()
 	var closed := bool(samples.closed)
@@ -117,10 +116,10 @@ static func _strip(samples: Dictionary, off_a: PackedFloat32Array, off_b: Packed
 		if mask.size() > 0 and (mask[i] == 0 or mask[(i + 1) % n] == 0):
 			continue
 		var j := (i + 1) % n
-		var a0 := pos[i] + right[i] * off_a[i] + Vector3.UP * y_a
-		var b0 := pos[i] + right[i] * off_b[i] + Vector3.UP * y_b
-		var a1 := pos[j] + right[j] * off_a[j] + Vector3.UP * y_a
-		var b1 := pos[j] + right[j] * off_b[j] + Vector3.UP * y_b
+		var a0 := _pt(samples, i, off_a[i]) + Vector3.UP * y_a
+		var b0 := _pt(samples, i, off_b[i]) + Vector3.UP * y_b
+		var a1 := _pt(samples, j, off_a[j]) + Vector3.UP * y_a
+		var b1 := _pt(samples, j, off_b[j]) + Vector3.UP * y_b
 		var v0 := dist[i]
 		var v1 := dist[i] + pos[i].distance_to(pos[j])
 		var quad := [a0, b0, b1, a0, b1, a1]
@@ -149,6 +148,14 @@ static func _strip(samples: Dictionary, off_a: PackedFloat32Array, off_b: Packed
 		arrays[Mesh.ARRAY_COLOR] = cols
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
+
+
+## Point `off` metres to the right of centreline sample i, following the
+## road's crossfall (kerbs, run-off and walls continue the same plane).
+static func _pt(s: Dictionary, i: int, off: float) -> Vector3:
+	var bank: PackedFloat32Array = s.get("bank", PackedFloat32Array())
+	var b := bank[i] if i < bank.size() else 0.0
+	return (s.pos as PackedVector3Array)[i] + (s.right as PackedVector3Array)[i] * off + Vector3.UP * (off * b)
 
 
 static func _const(n: int, v: float) -> PackedFloat32Array:
@@ -186,21 +193,32 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 	var kerb_w := 1.0
 	if bool(spec.kerbs):
 		var kerb_mat := _mat(Color.WHITE, 0.7, true)
+		var ranges: Array = spec.get("kerb_ranges", [])
+		var total_len := float(s.length)
 		for side in [-1.0, 1.0]:
 			var mask := PackedByteArray()
 			var cols := PackedColorArray()
 			var a := PackedFloat32Array()
 			var b := PackedFloat32Array()
 			for i in n:
-				var corner := absf(curv[i]) > 1.0 / 70.0
-				mask.append(1 if corner else 0)
+				var on := false
+				if ranges.is_empty():
+					on = absf(curv[i]) > 1.0 / 70.0
+				else:
+					var f := float(s.dist[i]) / maxf(total_len, 1.0)
+					for r: Dictionary in ranges:
+						if (str(r.get("side", "")) == "right") == (side > 0.0) and f >= float(r.get("start", 0.0)) and f <= float(r.get("end", 0.0)):
+							on = true
+							break
+				mask.append(1 if on else 0)
 				a.append(side * width[i] * 0.5)
 				b.append(side * (width[i] * 0.5 + kerb_w))
 				cols.append(Color(0.85, 0.1, 0.1) if int(float(s.dist[i]) / 2.0) % 2 == 0 else Color(0.95, 0.95, 0.95))
-			# Grow masks a little so kerbs start before the corner.
+			# Grow auto masks a little so kerbs start before the corner
+			# (recorded ranges are already padded).
 			var grown := mask.duplicate()
 			for i in n:
-				if mask[i] == 1:
+				if mask[i] == 1 and ranges.is_empty():
 					for d in range(-3, 4):
 						var j := i + d
 						if s.closed:
@@ -243,15 +261,14 @@ static func _wall_mesh(s: Dictionary, inner: PackedFloat32Array, outer: PackedFl
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var pos: PackedVector3Array = s.pos
-	var right: PackedVector3Array = s.right
 	var n := pos.size()
 	var segs := n if s.closed else n - 1
 	for i in segs:
 		var j := (i + 1) % n
-		var i0 := pos[i] + right[i] * inner[i]
-		var i1 := pos[j] + right[j] * inner[j]
-		var o0 := pos[i] + right[i] * outer[i]
-		var o1 := pos[j] + right[j] * outer[j]
+		var i0 := _pt(s, i, inner[i])
+		var i1 := _pt(s, j, inner[j])
+		var o0 := _pt(s, i, outer[i])
+		var o1 := _pt(s, j, outer[j])
 		var up := Vector3.UP * h
 		var low := Vector3.DOWN * 0.3
 		for quad in [[i0 + low, i1 + low, i1 + up, i0 + up], [o1 + low, o0 + low, o0 + up, o1 + up], [i0 + up, i1 + up, o1 + up, o0 + up]]:
@@ -339,7 +356,7 @@ static func _build_markers(root: Node3D, spec: Dictionary, s: Dictionary) -> voi
 	for c: Dictionary in spec.clips:
 		var i := clampi(int(fposmod(float(c.t), 1.0) * n), 0, n - 1)
 		var side := -1.0 if str(c.side) == "left" else 1.0
-		var p: Vector3 = pos[i] + s.right[i] * side * (float(s.width[i]) * 0.5 - 0.5)
+		var p: Vector3 = _pt(s, i, side * (float(s.width[i]) * 0.5 - 0.5))
 		var marker := Node3D.new()
 		marker.position = p
 		marker.set_meta("clip", c)
@@ -430,7 +447,7 @@ static func _build_scenery(root: Node3D, spec: Dictionary, s: Dictionary) -> voi
 	var step := maxi(int(40.0 / float(s.spacing)), 1)
 	for i in range(0, n, step):
 		var side := 1.0 if (i / step) % 2 == 0 else -1.0
-		var p := pos[i] + right[i] * side * (float(s.width[i]) * 0.5 + clear - 3.0)
+		var p := _pt(s, i, side * (float(s.width[i]) * 0.5 + clear - 3.0))
 		if _near_track(p, pos, float(s.width[i]) * 0.5 + 1.5, grid):
 			continue
 		var pole := MeshInstance3D.new()
