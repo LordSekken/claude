@@ -249,3 +249,249 @@
     padding: 0 20px 20px;
   }
 }
+
+/* ---------- traffic sandbox ---------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 10px;
+  flex-shrink: 0;
+}
+
+.tabs button,
+.seg button {
+  flex: 1;
+  border: 1px solid #d0d4dc;
+  background: #f4f5f7;
+  border-radius: 8px;
+  padding: 8px 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin: 0;
+}
+
+.tabs button.on,
+.seg button.on {
+  background: #1a4fd6;
+  border-color: #1a4fd6;
+  color: white;
+  font-weight: 600;
+}
+
+.seg {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sheet-body .seg button {
+  margin: 0;
+  padding: 8px 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.sheet-body button.danger {
+  color: #c92a2a;
+  border-color: #f1b0b0;
+}
+
+.sheet-body button.big {
+  font-size: 1rem;
+  padding: 10px 20px;
+}
+
+.sheet-body input[type="checkbox"] {
+  width: auto;
+}
+
+.subcard {
+  background: #f6f7fb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+}
+
+.subcard strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.file-btn {
+  display: inline-flex !important;
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  background: #f4f4f5;
+  margin: 6px 8px 0 0 !important;
+}
+
+.file-btn input {
+  display: none;
+}
+
+.slider {
+  width: 100%;
+  margin: -4px 0 10px;
+}
+
+.sheet-body label input.slider-sm {
+  width: 140px;
+}
+
+.clock {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #333;
+}
+
+.scorecard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.grade {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.big-num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.delta {
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-left: 4px;
+  color: #777;
+}
+
+.delta.good {
+  color: #2b8a3e;
+}
+
+.delta.bad,
+td.bad {
+  color: #c92a2a;
+}
+
+table.stats {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+table.stats td {
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+table.stats td:last-child {
+  text-align: right;
+}
+
+.focus-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.focus-card:hover {
+  background: #f6f7fb;
+}
+
+.focus-card .grade {
+  width: 36px;
+  height: 36px;
+  font-size: 1.2rem;
+}
+
+.toast {
+  position: absolute;
+  top: calc(max(12px, env(safe-area-inset-top)) + 58px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1150;
+  background: rgba(20, 24, 33, 0.88);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  pointer-events: none;
+}
+
+.car-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 450; /* above roads (overlay pane), below drag handles (marker pane) */
+  pointer-events: none;
+}
+
+.handle {
+  border-radius: 50%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.handle-node {
+  background: white;
+  border: 3px solid #1a4fd6;
+}
+
+.handle-ctrl {
+  background: #1a4fd6;
+  border: 3px solid white;
+}
+
+.focus-label {
+  background: #d6336c;
+  color: white;
+  border: none;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.focus-label::before {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .toast {
+    left: calc(340px + (100vw - 340px) / 2);
+  }
+}

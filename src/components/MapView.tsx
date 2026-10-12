@@ -15,6 +15,8 @@ interface MapViewProps {
   onMapClick: (lngLat: [number, number]) => void;
   roads: RoadWay[];
   design: RoundaboutDesign | null;
+  /** Drop a pin where the user taps (used by the roundabout sketcher). */
+  showClickMarker: boolean;
 }
 
 const roadStyle = (highway: string): L.PathOptions => {
@@ -30,7 +32,7 @@ const designLayerStyle: Record<string, L.PathOptions> = {
   "splitter-island": { color: "#2f7d32", fillColor: "#a3d9a5", fillOpacity: 0.7, weight: 1 },
 };
 
-export default function MapView({ onMapReady, onMapClick, roads, design }: MapViewProps) {
+export default function MapView({ onMapReady, onMapClick, roads, design, showClickMarker }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const roadLayerRef = useRef<L.LayerGroup | null>(null);
@@ -38,6 +40,8 @@ export default function MapView({ onMapReady, onMapClick, roads, design }: MapVi
   const clickMarkerRef = useRef<L.Marker | null>(null);
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  const showMarkerRef = useRef(showClickMarker);
+  showMarkerRef.current = showClickMarker;
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -47,7 +51,8 @@ export default function MapView({ onMapReady, onMapClick, roads, design }: MapVi
     );
     L.control.zoom({ position: "bottomright" }).addTo(map);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 20,
+      maxZoom: 21,
+      maxNativeZoom: 19, // OSM tiles stop at 19; upscale past that so you can zoom in on lanes
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
 
@@ -55,6 +60,10 @@ export default function MapView({ onMapReady, onMapClick, roads, design }: MapVi
     designLayerRef.current = L.layerGroup().addTo(map);
 
     map.on("click", (e: L.LeafletMouseEvent) => {
+      if (!showMarkerRef.current) {
+        onMapClickRef.current([e.latlng.lng, e.latlng.lat]);
+        return;
+      }
       if (clickMarkerRef.current) {
         clickMarkerRef.current.setLatLng(e.latlng);
       } else {
@@ -72,6 +81,13 @@ export default function MapView({ onMapReady, onMapClick, roads, design }: MapVi
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!showClickMarker && clickMarkerRef.current) {
+      clickMarkerRef.current.remove();
+      clickMarkerRef.current = null;
+    }
+  }, [showClickMarker]);
 
   useEffect(() => {
     const layer = roadLayerRef.current;

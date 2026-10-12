@@ -11,9 +11,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Intersection Editor',
-        short_name: 'Intersections',
-        description: 'Look at a real intersection and redesign it — roundabouts and more.',
+        name: 'Traffic Sandbox',
+        short_name: 'Traffic',
+        description: "Load your city's real roads, redesign them, and simulate the traffic.",
         theme_color: '#1a4fd6',
         background_color: '#1a4fd6',
         display: 'standalone',
