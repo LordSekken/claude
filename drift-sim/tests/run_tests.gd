@@ -28,6 +28,7 @@ func _init() -> void:
 	await test_agent_tools()
 	test_kn5()
 	test_forza()
+	test_forza_messy()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -412,6 +413,70 @@ func test_forza() -> void:
 	check(back.kerb[0] == 3 and absf(back.rumble_r[0] - 0.3) < 0.001, "forza: recording keeps kerb/surface data")
 	var old := ForzaTelemetry.Pass.from_dict({"role": "line", "points": [[1, 2, 3, 0.5]]})
 	check(old.kerb.size() == 1 and old.kerb[0] == 0, "forza: old recordings still load")
+
+
+## Hairpin course, recorded the way a real session goes: the line pass starts
+## early and reverses at the end, the left edge is two overlapping partial
+## passes, the right edge was driven backwards.
+func _hairpin_point(sd: float, lat: float, R: float) -> Vector3:
+	var c: Vector3
+	var t: Vector3
+	if sd <= 150.0:
+		c = Vector3(0, 0, sd); t = Vector3(0, 0, 1)
+	elif sd <= 150.0 + PI * R:
+		var a := (sd - 150.0) / R
+		c = Vector3(-R + R * cos(a), 0, 150.0 + R * sin(a)); t = Vector3(-sin(a), 0, cos(a))
+	else:
+		c = Vector3(-2.0 * R, 0, 150.0 - (sd - 150.0 - PI * R)); t = Vector3(0, 0, -1)
+	var right := Vector3(-t.z, 0, t.x)
+	return c + right * lat + Vector3.UP * (0.03 * sd)
+
+
+func test_forza_messy() -> void:
+	var R := 5.5
+	var total := 300.0 + PI * R
+	var t := ForzaTelemetry.new()
+	var passes := []
+	var mk := func(role: String, lat: float, from: float, to: float, step: float) -> ForzaTelemetry.Pass:
+		var ps := ForzaTelemetry.Pass.new()
+		ps.role = role
+		var sd := from
+		while (step > 0.0 and sd <= to) or (step < 0.0 and sd >= to):
+			var in_pin := sd > 150.0 and sd < 150.0 + PI * R
+			var ax := (4.0 if step > 0.0 else -4.0) if in_pin else 0.0
+			var s := t.parse(_forza_packet(244, 324, _hairpin_point(sd, lat, R), 20.0, ax))
+			if not s.is_empty():
+				ps.add(s)
+			sd += step
+		return ps
+	var line: ForzaTelemetry.Pass = mk.call("line", 1.0, -20.0, total, 0.33)
+	var back: ForzaTelemetry.Pass = mk.call("line", 1.0, total, total - 15.0, -0.33)   # reversed at the end
+	for i in back.points.size():
+		line.points.append(back.points[i]); line.accel_x.append(0.0); line.kerb.append(0); line.rumble_l.append(0.0); line.rumble_r.append(0.0)
+	passes.append(line)
+	passes.append(mk.call("left", -3.1, 0.0, 250.0, 0.33))
+	passes.append(mk.call("left", -3.1, 200.0, total, 0.33))
+	passes.append(mk.call("right", 3.1, total, 0.0, -0.33))          # driven the other way
+	var r := ForzaTelemetry.build_track(passes, "Hairpin")
+	check(r.ok, "forza messy: track built (%s)" % r.get("error", ""))
+	if not r.ok:
+		return
+	check(not bool(r.info.mirrored), "forza messy: handedness")
+	check(absf(float(r.info.width_m) - 8.0) < 0.7, "forza messy: width from pooled partial/backwards edges %.1f m ~ 8" % r.info.width_m)
+	check(float(r.info.edge_cover) > 0.9, "forza messy: edges cover %.0f%%" % (float(r.info.edge_cover) * 100.0))
+	check(absf(float(r.info.length_m) - total) < 12.0, "forza messy: overshoot/reverse trimmed, length %.0f m ~ %.0f" % [r.info.length_m, total])
+	var v := TrackSpec.validate(r.spec)
+	check((v.errors as Array).is_empty(), "forza messy: hairpin validates (%s)" % str(v.errors))
+	var smp := TrackSpec.sample(r.spec, 2.0)
+	var wide := PackedFloat32Array()
+	var ok_off := PackedFloat32Array()
+	for i in (smp.pos as PackedVector3Array).size():
+		wide.append(float(smp.width[i]) * 0.5 + 4.0)
+		ok_off.append(float(smp.width[i]) * 0.5 + 0.9)
+	var m_wide := TrackBuilder._clear_mask(smp, wide)
+	var m_ok := TrackBuilder._clear_mask(smp, ok_off)
+	check(m_wide.count(0) > 0, "builder: walls that would cut into the other hairpin leg are trimmed (%d)" % m_wide.count(0))
+	check(m_ok.count(0) < m_ok.size() * 0.1, "builder: walls at the edge mostly kept (%d trimmed of %d)" % [m_ok.count(0), m_ok.size()])
 
 
 func test_physics() -> void:

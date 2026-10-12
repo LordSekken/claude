@@ -35,7 +35,7 @@ func _ready() -> void:
 	head.add_child(UiUtil.title("  Record from Forza"))
 	vb.add_child(head)
 	vb.add_child(UiUtil.label("In Forza: Settings > HUD and Gameplay > Data Out = ON, Data Out IP = 127.0.0.1 (or this PC's IP if Forza runs on an Xbox), port = the number below. Press Listen and drive a few metres until the line below shows your position.", 15, Color(0.75, 0.75, 0.8)))
-	vb.add_child(UiUtil.label("For an exact copy record 3 passes, each from the same start point to the same end point:\n  1. Hugging the LEFT edge - slowly, left tyres right on the edge of the tarmac (kerbs are fine, grass is ignored).\n  2. Hugging the RIGHT edge - the same on the right.\n  3. Your driving line - drift it like normal.\nThe edges set the turns, road width and camber; elevation comes from every pass; kerbs come from where Forza says your tyres hit a rumble strip.", 15, Color(0.75, 0.75, 0.8)))
+	vb.add_child(UiUtil.label("For an exact copy record 3 passes, each from the same start point to the same end point:\n  1. Hugging the LEFT edge - slowly, left tyres right on the edge of the tarmac (kerbs are fine, grass is ignored).\n  2. Hugging the RIGHT edge - the same on the right.\n  3. Your driving line - drift it like normal.\nThe edges set the turns, road width and camber; elevation comes from every pass; kerbs come from where Forza says your tyres hit a rumble strip.\nPasses don't have to be perfect: an edge can be recorded in several pieces (overlaps are fine), driven either direction, and turning round or overshooting the end gets cut off automatically.", 15, Color(0.75, 0.75, 0.8)))
 	_port = SpinBox.new()
 	_port.min_value = 1024
 	_port.max_value = 65535
@@ -177,6 +177,8 @@ func _make() -> void:
 	if info.edges:
 		txt += "Edges found along %d%% of the road, max camber %.1f%%%s.\n" % [int(float(info.edge_cover) * 100.0), float(info.max_bank_pct),
 			(", ignored %d off-road edge points" % int(info.offroad_dropped)) if int(info.offroad_dropped) > 0 else ""]
+		if float(info.get("trimmed_m", 0.0)) > 5.0:
+			txt += "Cut %d m off the ends where the edge passes didn't reach.\n" % int(info.trimmed_m)
 	elif bool(info.one_edge_only):
 		txt += "[color=#ffcc66]Only one edge pass - record the other edge too for exact width and position.[/color]\n"
 	txt += ("Kerbs: %d sections from rumble-strip contact.\n" % int(info.kerbs)) if int(info.kerbs) > 0 else "No kerb contact recorded (no kerbs added).\n"

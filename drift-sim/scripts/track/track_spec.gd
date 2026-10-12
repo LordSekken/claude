@@ -206,9 +206,11 @@ static func validate(spec_in: Dictionary) -> Dictionary:
 		stats.min_radius_m = snappedf(min_r, 0.1) if min_r < INF else -1
 		if min_r < w * 0.5 + 1.0:
 			warnings.append("Very tight corner (radius %.1f m) at %.0f%% - the inside edge will fold over itself. Widen the corner or reduce width." % [min_r, tight_at * 100.0])
-		var overlap := _find_overlap(s, float(spec.runoff))
+		var overlap := _find_overlap(s, -0.5)
 		if overlap >= 0.0:
 			errors.append("Track sections overlap near %.0f%% of the lap (roads cross or run into each other)." % (overlap * 100.0))
+		elif _find_overlap(s, float(spec.runoff)) >= 0.0:
+			warnings.append("Some sections run close together (hairpins); walls and run-off between them are trimmed so they don't cut into the other road.")
 		if closed and cp[0].distance_to(cp[cp.size() - 1]) < 1.0:
 			warnings.append("First and last points are on top of each other; for closed tracks don't repeat the first point.")
 		var ys := []

@@ -91,6 +91,7 @@ Rebuild your favourite Forza Horizon / Motorsport drift zones by driving them:
    - camber comes from the height difference between the edges; elevation from every pass;
    - kerbs go exactly where Forza reported a tyre on a rumble strip;
    - edge points where the outer tyres were in the grass/dirt (much more surface rumble than the inner tyres) are ignored, so running wide doesn't widen the road.
+   - passes don't need to be perfect: edges can be recorded in several overlapping pieces or driven backwards, and turnarounds/overshoots are cut off; hairpins keep their walls out of the other leg.
    Then **Open in Track Editor** (walls, zones, clips), **Save + Drive**, or **Export for Assetto Corsa**.
 
 Recordings are saved to `%APPDATA%\DriftLab\recordings` so they can be shared or rebuilt later. The game's packet layout and its axis handedness are detected from the physics (speed vs. velocity, lateral g in corners), not hard-coded, so newer games (e.g. Forza Horizon 6) with a shifted layout are found by scanning the packet.

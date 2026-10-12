@@ -211,8 +211,13 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 							on = true
 							break
 				mask.append(1 if on else 0)
-				a.append(side * width[i] * 0.5)
-				b.append(side * (width[i] * 0.5 + kerb_w))
+				if ranges.is_empty():
+					a.append(side * width[i] * 0.5)
+					b.append(side * (width[i] * 0.5 + kerb_w))
+				else:
+					# Recorded kerbs were driven over, so they're part of the road width.
+					a.append(side * (width[i] * 0.5 - kerb_w))
+					b.append(side * width[i] * 0.5)
 				cols.append(Color(0.85, 0.1, 0.1) if int(float(s.dist[i]) / 2.0) % 2 == 0 else Color(0.95, 0.95, 0.95))
 			# Grow auto masks a little so kerbs start before the corner
 			# (recorded ranges are already padded).
@@ -225,9 +230,11 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 							j = (j + n) % n
 						if j >= 0 and j < n:
 							grown[j] = 1
-			_add_surface(root, _strip(s, a, b, 0.0, 0.04, grown, cols), kerb_mat, "kerb", counter)
+			_add_surface(root, _strip(s, a, b, 0.0 if ranges.is_empty() else 0.02, 0.04, grown, cols), kerb_mat, "kerb", counter)
 
-	# Run-off both sides.
+	# Run-off both sides (trimmed where it would cut into another section of
+	# road, e.g. the other leg of a hairpin).
+	var kerb_out := kerb_w if bool(spec.kerbs) and (spec.get("kerb_ranges", []) as Array).is_empty() else 0.0
 	var runoff := float(spec.runoff)
 	var surf := str(spec.runoff_surface)
 	if runoff > 0.05:
@@ -236,15 +243,15 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 			var b := PackedFloat32Array()
 			for i in n:
 				a.append(side * width[i] * 0.5)
-				b.append(side * (width[i] * 0.5 + runoff + (kerb_w if bool(spec.kerbs) else 0.0)))
+				b.append(side * (width[i] * 0.5 + runoff + kerb_out))
 			var mat := _asphalt_mat() if surf == "asphalt" else _mat(SURFACE_COLORS.get(surf, SURFACE_COLORS.grass))
-			_add_surface(root, _strip(s, a, b, -0.01, -0.01), mat, surf, counter)
+			_add_surface(root, _strip(s, a, b, -0.01, -0.01, _clear_mask(s, b)), mat, surf, counter)
 
 	# Walls.
 	var walls: Dictionary = spec.walls
 	var wall_h := float(walls.get("height", 1.2))
 	var wall_mat := _mat(Color(0.62, 0.62, 0.6), 0.9)
-	var edge := runoff + (kerb_w if bool(spec.kerbs) else 0.0)
+	var edge := runoff + kerb_out
 	for side_name in ["left", "right"]:
 		if not bool(walls.get(side_name, false)):
 			continue
@@ -254,10 +261,43 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 		for i in n:
 			inner.append(side * (width[i] * 0.5 + edge))
 			outer.append(side * (width[i] * 0.5 + edge + 0.4))
-		_add_surface(root, _wall_mesh(s, inner, outer, wall_h), wall_mat, "concrete", counter, true)
+		_add_surface(root, _wall_mesh(s, inner, outer, wall_h, _clear_mask(s, outer)), wall_mat, "concrete", counter, true)
 
 
-static func _wall_mesh(s: Dictionary, inner: PackedFloat32Array, outer: PackedFloat32Array, h: float) -> ArrayMesh:
+## 1 where a point `off` metres from the centreline stays clear of every other
+## section of road, 0 where it would sit on it (hairpin legs, close switchbacks).
+static func _clear_mask(s: Dictionary, off: PackedFloat32Array) -> PackedByteArray:
+	var pos: PackedVector3Array = s.pos
+	var width: PackedFloat32Array = s.width
+	var dist: PackedFloat32Array = s.dist
+	var n := pos.size()
+	var length := float(s.length)
+	var grid := {}
+	for i in n:
+		var key := Vector2i(floori(pos[i].x / 16.0), floori(pos[i].z / 16.0))
+		if not grid.has(key):
+			grid[key] = []
+		(grid[key] as Array).append(i)
+	var mask := PackedByteArray()
+	mask.resize(n)
+	mask.fill(1)
+	for i in n:
+		var q := _pt(s, i, off[i])
+		var key := Vector2i(floori(q.x / 16.0), floori(q.z / 16.0))
+		for dx in range(-2, 3):
+			for dz in range(-2, 3):
+				for j: int in grid.get(key + Vector2i(dx, dz), []):
+					var along := absf(dist[j] - dist[i])
+					if s.closed:
+						along = minf(along, length - along)
+					if along < width[i] + 6.0 or absf(pos[j].y - q.y) > 4.0:
+						continue
+					if Vector2(q.x - pos[j].x, q.z - pos[j].z).length() < width[j] * 0.5 + 0.3:
+						mask[i] = 0
+	return mask
+
+
+static func _wall_mesh(s: Dictionary, inner: PackedFloat32Array, outer: PackedFloat32Array, h: float, mask := PackedByteArray()) -> ArrayMesh:
 	# One-sided faces with proper normals (inner face toward the road, outer
 	# face away, top up); collision uses backface_collision so it's still solid.
 	var st := SurfaceTool.new()
@@ -268,6 +308,8 @@ static func _wall_mesh(s: Dictionary, inner: PackedFloat32Array, outer: PackedFl
 	var segs := n if s.closed else n - 1
 	for i in segs:
 		var j := (i + 1) % n
+		if mask.size() > 0 and (mask[i] == 0 or mask[j] == 0):
+			continue
 		var side := signf(inner[i]) if inner[i] != 0.0 else 1.0
 		var i0 := _pt(s, i, inner[i])
 		var i1 := _pt(s, j, inner[j])

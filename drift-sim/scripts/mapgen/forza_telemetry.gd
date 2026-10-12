@@ -238,36 +238,101 @@ static func needs_mirror(passes: Array) -> bool:
 	return score < 0.0
 
 
-## Road edge from an edge-hugging pass: pushes each point out by the car's
-## half width and drops points where the outer wheels were off the tarmac
-## (outer wheels rumbling much more than the inner ones).
+## Car-centre points of an edge-hugging pass, minus points where the outer
+## wheels were off the tarmac (outer wheels rumbling much more than the inner
+## ones). The push out to the real edge happens later, relative to the road.
 ## Returns {points, dropped}.
-static func _edge_from_pass(p: Pass, side: float, conv: Callable) -> Dictionary:
-	var pts := PackedVector3Array()
-	for v in p.points:
-		pts.append(conv.call(v))
-	var rights := _rights(smooth(pts, 2, false), false)
+static func _edge_points(p: Pass, side: float, conv: Callable) -> Dictionary:
 	var outer := p.rumble_l if side < 0.0 else p.rumble_r
 	var inner := p.rumble_r if side < 0.0 else p.rumble_l
 	var peak := 0.0
 	for v in outer:
 		peak = maxf(peak, v)
 	var off := PackedByteArray()
-	off.resize(pts.size())
+	off.resize(p.points.size())
 	var n_off := 0
 	if peak > 1e-4:
-		for i in pts.size():
+		for i in p.points.size():
 			if outer[i] > inner[i] * 2.5 + peak * 0.08:
 				off[i] = 1
 				n_off += 1
 	# If most of the pass "looks" off-road the road itself is just rough - keep it all.
-	var filter := n_off < pts.size() * 0.4
+	var filter := n_off < p.points.size() * 0.4
 	var out := PackedVector3Array()
-	for i in pts.size():
-		if filter and off[i] == 1:
-			continue
-		out.append(pts[i] + rights[i] * side * EDGE_OFFSET)
+	for i in p.points.size():
+		if not (filter and off[i] == 1):
+			out.append(conv.call(p.points[i]))
 	return {"points": out, "dropped": n_off if filter else 0}
+
+
+## Splits a path (~2 m spacing) where the car reversed (a cusp) or drove back
+## over road it had already covered, and returns the pieces (>= 10 points).
+static func _split_clean(pts: PackedVector3Array) -> Array:
+	var n := pts.size()
+	var cut := PackedByteArray()
+	cut.resize(n)
+	for i in range(1, n - 1):
+		var a := Vector2(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z)
+		var b := Vector2(pts[i + 1].x - pts[i].x, pts[i + 1].z - pts[i].z)
+		if a.length() > 0.01 and b.length() > 0.01 and a.normalized().dot(b.normalized()) < -0.3:
+			cut[i] = 1
+	var cell := 8.0
+	var grid := {}
+	for i in n:
+		var key := Vector2i(floori(pts[i].x / cell), floori(pts[i].z / cell))
+		for dx in range(-1, 2):
+			for dz in range(-1, 2):
+				for j: int in grid.get(key + Vector2i(dx, dz), []):
+					if i - j > 40 and not (j < 5 and i > n - 6) and absf(pts[i].y - pts[j].y) < 3.0 \
+							and Vector2(pts[i].x - pts[j].x, pts[i].z - pts[j].z).length() < 4.0:
+						cut[i] = 1
+		if not grid.has(key):
+			grid[key] = []
+		(grid[key] as Array).append(i)
+	var pieces := []
+	var cur := PackedVector3Array()
+	for i in n:
+		if cut[i] == 1:
+			if cur.size() >= 10:
+				pieces.append(cur)
+			cur = PackedVector3Array()
+			continue
+		cur.append(pts[i])
+	if cur.size() >= 10:
+		pieces.append(cur)
+	return pieces
+
+
+static func _grid(pts: PackedVector3Array, cell: float) -> Dictionary:
+	var g := {}
+	for i in pts.size():
+		var key := Vector2i(floori(pts[i].x / cell), floori(pts[i].z / cell))
+		if not g.has(key):
+			g[key] = []
+		(g[key] as Array).append(i)
+	return g
+
+
+## Nearest edge point beside reference point p (in the slice across the road
+## at p, on the given side, at about the same height). -1 if none.
+static func _edge_at(pts: PackedVector3Array, grid: Dictionary, p: Vector3, r: Vector3, side: float) -> int:
+	var t := Vector3(r.z, 0.0, -r.x)
+	var key := Vector2i(floori(p.x / 8.0), floori(p.z / 8.0))
+	var best := -1
+	var best_l := INF
+	for dx in range(-3, 4):
+		for dz in range(-3, 4):
+			for j: int in grid.get(key + Vector2i(dx, dz), []):
+				var d := pts[j] - p
+				if absf(d.dot(t)) > 2.5 or absf(d.y) > 4.0:
+					continue
+				var l := d.dot(r) * side   # distance out to this side
+				if l < -1.5 or l > 20.0:
+					continue
+				if l < best_l:
+					best_l = l
+					best = j
+	return best
 
 
 ## Nearest point index on `pts` to `p`, searching a window after `hint`
@@ -307,12 +372,22 @@ static func build_track(passes: Array, name: String, default_width := 12.0) -> D
 	var lines: Array = usable.filter(func(p: Pass) -> bool: return p.role == "line")
 	var lefts: Array = usable.filter(func(p: Pass) -> bool: return p.role == "left")
 	var rights_p: Array = usable.filter(func(p: Pass) -> bool: return p.role == "right")
-	# Reference path: the first line pass, or the first edge pass.
-	var ref: Pass = (lines[0] if lines.size() > 0 else usable[0])
-	var raw := PackedVector3Array()
-	for v in ref.points:
-		raw.append(conv.call(v))
-	var path := resample(raw, 2.0)
+	# Reference path: the longest clean stretch of any pass (passes are split
+	# where the car reversed or drove back over itself), preferring a line pass.
+	var best_any := PackedVector3Array()
+	var best_line := PackedVector3Array()
+	for p: Pass in usable:
+		var raw := PackedVector3Array()
+		for v in p.points:
+			raw.append(conv.call(v))
+		for piece: PackedVector3Array in _split_clean(resample(raw, 2.0)):
+			if piece.size() > best_any.size():
+				best_any = piece
+			if p.role == "line" and piece.size() > best_line.size():
+				best_line = piece
+	var path := best_line if best_line.size() >= best_any.size() * 0.8 else best_any
+	if path.size() < 10:
+		return {"ok": false, "error": "No clean stretch of road in the recording (every pass turns back on itself?)."}
 	var closed := path.size() > 50 and path[0].distance_to(path[path.size() - 1]) < 25.0
 	if closed:
 		# Trim the overlap so the loop closes cleanly.
@@ -328,53 +403,68 @@ static func build_track(passes: Array, name: String, default_width := 12.0) -> D
 	var has_edges := lefts.size() > 0 and rights_p.size() > 0
 	var dropped := 0
 	var edge_cover := 0.0
+	var trimmed_m := 0.0
 	if has_edges:
-		var le := _edge_from_pass(lefts[0], -1.0, conv)
-		var re := _edge_from_pass(rights_p[0], 1.0, conv)
-		dropped = int(le.dropped) + int(re.dropped)
-		var lp := resample(le.points, 1.0)
-		var rp := resample(re.points, 1.0)
+		# All passes for a side are pooled, so partial and overlapping passes
+		# are fine: each slice across the road takes the nearest edge point.
+		var lp := PackedVector3Array()
+		var rp := PackedVector3Array()
+		for p: Pass in lefts:
+			var e := _edge_points(p, -1.0, conv)
+			lp.append_array(e.points)
+			dropped += int(e.dropped)
+		for p: Pass in rights_p:
+			var e := _edge_points(p, 1.0, conv)
+			rp.append_array(e.points)
+			dropped += int(e.dropped)
 		if lp.size() < 2 or rp.size() < 2:
 			return {"ok": false, "error": "An edge pass has no usable points (was the whole pass off the road?). Delete it and record it again."}
-		var lc := closed and lp.size() > 50 and lp[0].distance_to(lp[lp.size() - 1]) < 25.0
-		var rc := closed and rp.size() > 50 and rp[0].distance_to(rp[rp.size() - 1]) < 25.0
+		var lg := _grid(lp, 8.0)
+		var rg := _grid(rp, 8.0)
 		var refr := _rights(path, closed)
-		# Per reference point: offset to the road centre, width and crossfall,
-		# only where both edges are found nearby; gaps are interpolated.
 		var delta := PackedVector3Array()
 		delta.resize(n)
 		var valid := PackedByteArray()
 		valid.resize(n)
-		var hl := -1
-		var hr := -1
 		for i in n:
-			hl = _match(lp, path[i], hl, lc)
-			hr = _match(rp, path[i], hr, rc)
-			var a := lp[hl]
-			var b := rp[hr]
-			var w := Vector2(a.x - b.x, a.z - b.z).length()
-			var c := (a + b) * 0.5
-			var lateral_ok := (a - path[i]).dot(refr[i]) < 1.0 and (b - path[i]).dot(refr[i]) > -1.0
-			if w > 4.0 and w < 60.0 and Vector2(c.x - path[i].x, c.z - path[i].z).length() < w and lateral_ok:
-				valid[i] = 1
-				delta[i] = c - path[i]
-				widths[i] = w
-				banks[i] = clampf((b.y - a.y) / w, -0.15, 0.15)
-			else:
-				# Lost the edge (pass didn't cover this bit): re-acquire next time.
-				if Vector2(a.x - path[i].x, a.z - path[i].z).length() > 40.0:
-					hl = -1
-				if Vector2(b.x - path[i].x, b.z - path[i].z).length() > 40.0:
-					hr = -1
-		var nv := 0
-		for v in valid:
-			nv += int(v)
-		edge_cover = float(nv) / n
-		if nv < 3:
+			var il := _edge_at(lp, lg, path[i], refr[i], -1.0)
+			var ir := _edge_at(rp, rg, path[i], refr[i], 1.0)
+			if il < 0 or ir < 0:
+				continue
+			var ll := (lp[il] - path[i]).dot(refr[i]) - EDGE_OFFSET   # left road edge (negative)
+			var lr := (rp[ir] - path[i]).dot(refr[i]) + EDGE_OFFSET   # right road edge
+			var w := lr - ll
+			if w < 4.0 or w > 40.0:
+				continue
+			valid[i] = 1
+			delta[i] = refr[i] * ((ll + lr) * 0.5) + Vector3.UP * ((lp[il].y + rp[ir].y) * 0.5 - path[i].y)
+			widths[i] = w
+			banks[i] = clampf((rp[ir].y - lp[il].y) / w, -0.15, 0.15)
+		var first := valid.find(1)
+		var last := valid.rfind(1)
+		if first < 0 or last - first < 3:
 			has_edges = false
 			widths.fill(default_width)
 			banks.fill(0.0)
 		else:
+			if not closed and (first > 3 or last < n - 4):
+				# Keep only the part both edges cover (plus a few metres).
+				var a := maxi(first - 2, 0)
+				var b := mini(last + 2, n - 1)
+				for i in range(1, a + 1):
+					trimmed_m += path[i].distance_to(path[i - 1])
+				for i in range(b + 1, n):
+					trimmed_m += path[i].distance_to(path[i - 1])
+				path = path.slice(a, b + 1)
+				widths = widths.slice(a, b + 1)
+				banks = banks.slice(a, b + 1)
+				delta = delta.slice(a, b + 1)
+				valid = valid.slice(a, b + 1)
+				n = path.size()
+			var nv := 0
+			for v in valid:
+				nv += int(v)
+			edge_cover = float(nv) / n
 			_fill_gaps(valid, delta, widths, banks, closed)
 			for i in n:
 				path[i] += delta[i]
@@ -436,7 +526,7 @@ static func build_track(passes: Array, name: String, default_width := 12.0) -> D
 		"closed": closed,
 		"points": points,
 		"width": snappedf(avg_w, 0.1),
-		"runoff": 2.0,
+		"runoff": 0.5,   # walls just off the recorded edge, like a touge guardrail
 		"runoff_surface": "grass",
 		"walls": {"left": true, "right": true, "height": 1.0},
 		"kerbs": not kerb_ranges.is_empty(),
@@ -458,7 +548,7 @@ static func build_track(passes: Array, name: String, default_width := 12.0) -> D
 		max_bank = maxf(max_bank, absf(b))
 	return {"ok": true, "spec": spec, "error": "", "info": {"length_m": length, "closed": closed, "mirrored": mirror,
 		"width_m": avg_w, "edges": has_edges, "edge_cover": edge_cover, "elevation_m": _range_y(path),
-		"kerbs": kerb_ranges.size(), "offroad_dropped": dropped, "max_bank_pct": max_bank * 100.0,
+		"kerbs": kerb_ranges.size(), "offroad_dropped": dropped, "max_bank_pct": max_bank * 100.0, "trimmed_m": trimmed_m,
 		"one_edge_only": (lefts.size() > 0) != (rights_p.size() > 0)}}
 
 
