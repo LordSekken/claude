@@ -42,6 +42,9 @@ jobs:
           unzip -q templates.tpz
           mv templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
 
+      - name: Build HD texture pack (CC0 photo-scanned textures from Poly Haven)
+        run: python3 -m pip install -q "pillow>=11.1" && python3 tools/build_hd_textures.py hd_textures
+
       - name: Import project
         run: ~/godot/godot --headless --path . --import
 
@@ -53,6 +56,7 @@ jobs:
           mkdir -p build/windows
           ~/godot/godot --headless --path . --export-release "Windows Desktop" build/windows/DriftLab.exe
           cp README.md build/windows/README.md
+          cp -r hd_textures build/windows/hd_textures
           ls -la build/windows
 
       - name: Build force-feedback helper (ffb_helper.exe + SDL3.dll)

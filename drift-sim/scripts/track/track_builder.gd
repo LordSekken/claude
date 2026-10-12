@@ -258,26 +258,35 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 
 
 static func _wall_mesh(s: Dictionary, inner: PackedFloat32Array, outer: PackedFloat32Array, h: float) -> ArrayMesh:
+	# One-sided faces with proper normals (inner face toward the road, outer
+	# face away, top up); collision uses backface_collision so it's still solid.
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var pos: PackedVector3Array = s.pos
+	var right: PackedVector3Array = s.right
 	var n := pos.size()
 	var segs := n if s.closed else n - 1
 	for i in segs:
 		var j := (i + 1) % n
+		var side := signf(inner[i]) if inner[i] != 0.0 else 1.0
 		var i0 := _pt(s, i, inner[i])
 		var i1 := _pt(s, j, inner[j])
 		var o0 := _pt(s, i, outer[i])
 		var o1 := _pt(s, j, outer[j])
 		var up := Vector3.UP * h
 		var low := Vector3.DOWN * 0.3
-		for quad in [[i0 + low, i1 + low, i1 + up, i0 + up], [o1 + low, o0 + low, o0 + up, o1 + up], [i0 + up, i1 + up, o1 + up, o0 + up]]:
-			st.add_vertex(quad[0]); st.add_vertex(quad[1]); st.add_vertex(quad[2])
-			st.add_vertex(quad[0]); st.add_vertex(quad[2]); st.add_vertex(quad[3])
-			# Double-sided for collision robustness.
-			st.add_vertex(quad[0]); st.add_vertex(quad[2]); st.add_vertex(quad[1])
-			st.add_vertex(quad[0]); st.add_vertex(quad[3]); st.add_vertex(quad[2])
-	st.generate_normals()
+		var out_dir := ((right[i] + right[j]) * 0.5 * side).normalized()
+		for face: Array in [[[i0 + low, i1 + low, i1 + up, i0 + up], -out_dir], [[o0 + low, o1 + low, o1 + up, o0 + up], out_dir], [[i0 + up, i1 + up, o1 + up, o0 + up], Vector3.UP]]:
+			var q: Array = face[0]
+			var want: Vector3 = face[1]
+			# Godot front faces wind clockwise seen from the normal side.
+			var tri := [q[0], q[1], q[2], q[0], q[2], q[3]]
+			if ((q[1] as Vector3) - q[0]).cross((q[2] as Vector3) - q[0]).dot(want) > 0.0:
+				tri = [q[0], q[2], q[1], q[0], q[3], q[2]]
+			for v: Vector3 in tri:
+				st.set_normal(want)
+				st.set_uv(Vector2(0, 0))
+				st.add_vertex(v)
 	return st.commit()
 
 

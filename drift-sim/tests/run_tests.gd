@@ -192,6 +192,19 @@ func test_ac_export() -> void:
 	if kn.ok:
 		var names: Array = kn.named.keys()
 		check(names.any(func(n: String) -> bool: return n.begins_with("1ROAD")) and names.any(func(n: String) -> bool: return n.begins_with("1WALL")), "kn5 has 1ROAD and 1WALL meshes")
+		if Kn5Writer.hd_texture_dir() != "":
+			# HD pack installed: the road must carry the 4K photo-scanned texture.
+			var road: MeshInstance3D = null
+			for n: String in names:
+				if n.begins_with("1ROAD") and kn.named[n] is MeshInstance3D:
+					road = kn.named[n]
+					break
+			var mat: Material = road.get_active_material(0) if road else null
+			var tex: Texture2D = (mat as StandardMaterial3D).albedo_texture if mat is StandardMaterial3D else null
+			check(tex != null and tex.get_width() == 4096, "HD export: road uses the 4K asphalt texture (%s)" % (str(tex.get_width()) if tex else "none"))
+			check(FileAccess.file_exists(out.path_join("kanto_lot/extension/ext_config.ini")) and FileAccess.get_file_as_string(out.path_join("kanto_lot/extension/ext_config.ini")).contains("GRASS_MATERIALS = dl_grass"), "HD export: CSP grass/rain config written")
+		else:
+			print("  (HD texture pack not built - skipping HD export checks)")
 		kn.root.free()
 	var ext := ExternalTrackLoader.load_model(out.path_join("kanto_lot/kanto_lot.kn5"))
 	check(ext.ok and int(ext.collision_meshes) >= 3, "exported kn5 loads as a drivable track (%s)" % ext.get("collision_meshes", ext.get("error")))

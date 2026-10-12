@@ -5,28 +5,48 @@ extends RefCounted
 ##
 ## Inverse of Kn5Loader: Godot (x, y, z) -> AC (-x, y, -z) (a 180 degree turn
 ## about Y; winding unchanged). Meshes are baked to world space and split to
-## stay under the 16-bit index limit. Materials are plain ksPerPixel with
-## generated textures chosen from the AC physics name (1ROAD, 1KERB, ...).
+## stay under the 16-bit index limit. Materials are chosen from the AC
+## physics name (1ROAD, 1KERB, ...): with the HD texture pack (hd_textures/,
+## CC0 photo-scanned DDS from Poly Haven) road/grass/dirt/gravel/walls get
+## ksPerPixelNM with 4K/2K diffuse + normal maps; otherwise ksPerPixel with
+## small generated textures.
 
 const MAX_VERTS := 65000
 
-var _textures := {}        # name -> PackedByteArray (PNG)
-var _materials: Array = [] # [{name, tex, spec}]
+var _textures := {}        # name -> PackedByteArray (PNG or DDS)
+var _materials: Array = [] # [{name, shader, tex, normal, spec, exp}]
+var _hd := {}              # kind -> {tile_m} from hd_textures/manifest.json
+var _hd_dir := ""
 var _mat_index := {}       # key -> index
-var _meshes: Array = []    # [{name, mat, verts, normals, uvs, indices}]
+var _meshes: Array = []    # [{name, mat, verts, normals, uvs, tangents, indices}]
 var _dummies: Array = []   # [{name, xform}]
 var _obj_count := 0
 
 
 static func write(root: Node3D, dummies: Array, path: String) -> Dictionary:
 	var w := Kn5Writer.new()
+	w._hd_dir = hd_texture_dir()
+	if w._hd_dir != "":
+		var m: Variant = JsonUtil.load_file(w._hd_dir.path_join("manifest.json"))
+		if m is Dictionary:
+			w._hd = m
 	w._collect(root, root)
 	for d: Dictionary in dummies:
 		w._dummies.append(d)
 	if w._meshes.is_empty():
 		return {"ok": false, "error": "nothing to export"}
 	var err := w._save(path)
-	return {"ok": err == OK, "error": "" if err == OK else "write failed (%d)" % err, "meshes": w._meshes.size()}
+	return {"ok": err == OK, "error": "" if err == OK else "write failed (%d)" % err, "meshes": w._meshes.size(),
+		"materials": w._materials.map(func(m: Dictionary) -> String: return str(m.name)), "hd": not w._hd.is_empty()}
+
+
+## Folder with the HD texture pack (next to the exe, or in the project when
+## running from source), or "" if it isn't installed.
+static func hd_texture_dir() -> String:
+	for d: String in [OS.get_executable_path().get_base_dir().path_join("hd_textures"), ProjectSettings.globalize_path("res://hd_textures")]:
+		if FileAccess.file_exists(d.path_join("manifest.json")):
+			return d
+	return ""
 
 
 static func _rel(n: Node3D, root: Node) -> Transform3D:
@@ -80,11 +100,29 @@ func _material_for(name: String, mi: MeshInstance3D) -> int:
 		kind = "solid_" + color.to_html(false)
 	if _mat_index.has(kind):
 		return _mat_index[kind]
-	var tex_name := kind + ".png"
-	_textures[tex_name] = _make_texture(kind, color)
-	_materials.append({"name": "dl_" + kind, "tex": tex_name, "spec": 0.12 if kind == "asphalt" else 0.04})
+	if _hd.has(kind):
+		var d := kind + "_d.dds"
+		var nm := kind + "_n.dds"
+		_textures[d] = FileAccess.get_file_as_bytes(_hd_dir.path_join(d))
+		_textures[nm] = FileAccess.get_file_as_bytes(_hd_dir.path_join(nm))
+		var spec: Array = {"asphalt": [0.18, 30.0], "concrete": [0.1, 20.0], "gravel": [0.08, 12.0]}.get(kind, [0.04, 6.0])
+		_materials.append({"name": "dl_" + kind, "shader": "ksPerPixelNM", "tex": d, "normal": nm, "spec": spec[0], "exp": spec[1]})
+	else:
+		var tex_name := kind + ".png"
+		_textures[tex_name] = _make_texture(kind, color)
+		_materials.append({"name": "dl_" + kind, "shader": "ksPerPixel", "tex": tex_name, "normal": "", "spec": 0.12 if kind == "asphalt" else 0.04, "exp": 25.0})
 	_mat_index[kind] = _materials.size() - 1
 	return _mat_index[kind]
+
+
+static func _kind_for_key(key: String) -> String:
+	match key:
+		"ROAD": return "asphalt"
+		"GRASS": return "grass"
+		"GRAVEL", "SAND": return "gravel"
+		"DIRT": return "dirt"
+		"WALL": return "concrete"
+	return ""
 
 
 func _make_texture(kind: String, color: Color) -> PackedByteArray:
@@ -115,6 +153,17 @@ func _make_texture(kind: String, color: Color) -> PackedByteArray:
 
 
 func _uv_for(key: String, world: Vector3, normal: Vector3, uv: Vector2) -> Vector2:
+	var kind := _kind_for_key(key)
+	if _hd.has(kind):
+		var t := maxf(float((_hd[kind] as Dictionary).get("tile_m", 2.0)), 0.5)
+		if key == "ROAD":
+			t *= 1.5  # slightly larger grain hides the repeat along a long road
+			return uv / t  # road strips carry (metres across, metres along)
+		if key == "WALL":
+			return Vector2((world.x + world.z) / t, world.y / t)
+		if absf(normal.y) > 0.5:
+			return Vector2(world.x / t, world.z / t)
+		return Vector2((world.x + world.z) / t, world.y / t)
 	match key:
 		"KERB":
 			return Vector2(uv.x, uv.y / 4.0)  # one red/white pair every 4 m
@@ -153,14 +202,28 @@ func _add_mesh(mi: MeshInstance3D, name: String, xf: Transform3D) -> void:
 		var part := 0
 		for t in range(0, idx.size() - 2, 3):
 			if cv.size() + 3 > MAX_VERTS:
-				_meshes.append({"name": "%s_%d" % [name, part] if part > 0 else name, "mat": mat, "verts": cv, "normals": cn, "uvs": cu, "indices": ci})
+				_meshes.append({"name": "%s_%d" % [name, part] if part > 0 else name, "mat": mat, "verts": cv, "normals": cn, "uvs": cu, "tangents": _tangents(cv, cn, cu, ci), "indices": ci})
 				part += 1
 				cv = PackedVector3Array()
 				cn = PackedVector3Array()
 				cu = PackedVector2Array()
 				ci = PackedInt32Array()
 				remap.clear()
+			# Front faces must wind clockwise as seen from the normal side (Godot's
+			# convention, which maps to AC front faces). Track strips are built the
+			# other way round and drawn double-sided in Drift Lab, so fix the order
+			# here.
+			var order := [0, 1, 2]
+			var q0 := xf * v[idx[t]]
+			var q1 := xf * v[idx[t + 1]]
+			var q2 := xf * v[idx[t + 2]]
+			var nsum := Vector3.ZERO
 			for k in 3:
+				var si := idx[t + k]
+				nsum += basis_n * (nrm[si] if si < nrm.size() else Vector3.UP)
+			if (q1 - q0).cross(q2 - q0).dot(nsum) > 0.0:
+				order = [0, 2, 1]
+			for k: int in order:
 				var src := idx[t + k]
 				if not remap.has(src):
 					var wp := xf * v[src]
@@ -171,7 +234,37 @@ func _add_mesh(mi: MeshInstance3D, name: String, xf: Transform3D) -> void:
 					cu.append(_uv_for(key, wp, wn, uv[src] if src < uv.size() else Vector2.ZERO))
 				ci.append(remap[src])
 		if not ci.is_empty():
-			_meshes.append({"name": "%s_%d" % [name, part] if part > 0 else name, "mat": mat, "verts": cv, "normals": cn, "uvs": cu, "indices": ci})
+			_meshes.append({"name": "%s_%d" % [name, part] if part > 0 else name, "mat": mat, "verts": cv, "normals": cn, "uvs": cu, "tangents": _tangents(cv, cn, cu, ci), "indices": ci})
+
+
+## Per-vertex tangents (+U direction) from positions and UVs, for normal maps.
+static func _tangents(v: PackedVector3Array, n: PackedVector3Array, uv: PackedVector2Array, idx: PackedInt32Array) -> PackedVector3Array:
+	var acc := PackedVector3Array()
+	acc.resize(v.size())
+	for t in range(0, idx.size() - 2, 3):
+		var i0 := idx[t]
+		var i1 := idx[t + 1]
+		var i2 := idx[t + 2]
+		var e1 := v[i1] - v[i0]
+		var e2 := v[i2] - v[i0]
+		var d1 := uv[i1] - uv[i0]
+		var d2 := uv[i2] - uv[i0]
+		var det := d1.x * d2.y - d2.x * d1.y
+		if absf(det) < 1e-12:
+			continue
+		var tg := (e1 * d2.y - e2 * d1.y) / det
+		acc[i0] += tg
+		acc[i1] += tg
+		acc[i2] += tg
+	for i in v.size():
+		var nn := n[i]
+		var tg := acc[i] - nn * nn.dot(acc[i])
+		if tg.length_squared() < 1e-10:
+			tg = Vector3.RIGHT - nn * nn.x
+			if tg.length_squared() < 1e-6:
+				tg = Vector3.FORWARD
+		acc[i] = tg.normalized()
+	return acc
 
 
 # --- Binary output -----------------------------------------------------------
@@ -209,20 +302,24 @@ func _save(path: String) -> int:
 	f.store_32(_materials.size())
 	for m: Dictionary in _materials:
 		_str(f, m.name)
-		_str(f, "ksPerPixel")
+		_str(f, str(m.shader))
 		f.store_8(0)   # blend: opaque
 		f.store_8(0)   # alpha tested
 		f.store_32(0)  # depth mode
-		var props := [["ksAmbient", 0.45], ["ksDiffuse", 0.55], ["ksSpecular", float(m.spec)], ["ksSpecularEXP", 25.0], ["ksEmissive", 0.0], ["ksAlphaRef", 0.0]]
+		var props := [["ksAmbient", 0.45], ["ksDiffuse", 0.55], ["ksSpecular", float(m.spec)], ["ksSpecularEXP", float(m.exp)], ["ksEmissive", 0.0], ["ksAlphaRef", 0.0]]
 		f.store_32(props.size())
 		for p: Array in props:
 			_str(f, p[0])
 			for i in 10:
 				f.store_float(float(p[1]) if i == 0 else 0.0)
-		f.store_32(1)
-		_str(f, "txDiffuse")
-		f.store_32(0)
-		_str(f, m.tex)
+		var slots := [["txDiffuse", m.tex]]
+		if str(m.normal) != "":
+			slots.append(["txNormal", m.normal])
+		f.store_32(slots.size())
+		for k in slots.size():
+			_str(f, slots[k][0])
+			f.store_32(k)
+			_str(f, slots[k][1])
 	# Node tree: one root dummy with every mesh and marker as children.
 	f.store_32(1)
 	_str(f, "DriftLabTrack")
@@ -240,13 +337,15 @@ func _save(path: String) -> int:
 		var verts: PackedVector3Array = m.verts
 		var normals: PackedVector3Array = m.normals
 		var uvs: PackedVector2Array = m.uvs
+		var tans: PackedVector3Array = m.tangents
 		f.store_32(verts.size())
 		var center := Vector3.ZERO
 		for i in verts.size():
 			var p := verts[i]
 			var nn := normals[i]
 			center += p
-			for val in [-p.x, p.y, -p.z, -nn.x, nn.y, -nn.z, uvs[i].x, uvs[i].y, 1.0, 0.0, 0.0]:
+			var tg := tans[i]
+			for val in [-p.x, p.y, -p.z, -nn.x, nn.y, -nn.z, uvs[i].x, uvs[i].y, -tg.x, tg.y, -tg.z]:
 				f.store_float(val)
 		center /= maxf(verts.size(), 1)
 		var radius := 0.0
