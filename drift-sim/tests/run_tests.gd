@@ -30,6 +30,7 @@ func _init() -> void:
 	test_forza()
 	test_forza_messy()
 	test_forza_raw_log()
+	test_forza_session()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -495,6 +496,90 @@ func test_forza_raw_log() -> void:
 	var t := ForzaTelemetry.new()
 	var s := t.parse(back[10].data)
 	check(not s.is_empty() and (s.pos as Vector3).is_equal_approx(Vector3(10, 2, -10)), "raw log: packets replay through the parser")
+
+
+## Synthetic Forza session on a right-hand loop (Forza's own frame): road
+## edges at +-5 m, right side 6% higher, a kerb on the inside, racing laps,
+## one slow lap on each edge (the left one dropping into the grass), a rewind.
+func _session_packet(theta: float, lat: float, lap: int, kerb_zone: bool) -> PackedByteArray:
+	var b := PackedByteArray()
+	b.resize(324)
+	b.encode_s32(0, 1)
+	var r_c := 60.0 - lat
+	var right := Vector3(cos(theta), 0, -sin(theta))
+	var p := -right * r_c + Vector3.UP * (3.0 * sin(theta) + 0.06 * lat + 0.5)
+	b.encode_float(20, 15.0)          # lateral g toward the right (into the turn)
+	b.encode_float(40, 30.0)          # forward speed
+	b.encode_float(56, theta)         # yaw
+	for w in 4:
+		var wl := lat + (-0.8 if w % 2 == 0 else 0.8)
+		var v := 0.0
+		if absf(wl) > 5.0:
+			v = 0.12                      # off the tarmac
+		elif kerb_zone and wl > 4.0:
+			v = 0.24                      # rumble strip
+		b.encode_float(148 + w * 4, v)
+	b.encode_float(244, p.x)
+	b.encode_float(248, p.y)
+	b.encode_float(252, p.z)
+	b.encode_float(256, 30.0)
+	b.encode_u16(312, lap)
+	return b
+
+
+func test_forza_session() -> void:
+	var pk := []
+	var step := 0.5 / 60.0  # 0.5 m per packet on a 60 m radius
+	var lap := 0
+	var plan := []          # [kind] per lap
+	var rewound := false
+	for k in 10:
+		plan.append("race")
+	plan.insert(3, "left")
+	plan.insert(7, "right")
+	for li in plan.size():
+		var kind: String = plan[li]
+		var th := 0.0
+		while th < TAU:
+			var lat := 2.5 * sin(3.0 * th + li)
+			if kind == "left":
+				lat = -4.6 if th > 2.0 and th < 2.6 else -4.1
+			elif kind == "right":
+				lat = 4.1
+			var kz := th > 4.0 and th < 4.5
+			if kind == "race" and kz:
+				lat = 3.4    # clip the kerb
+			pk.append({"t_ms": pk.size() * 16, "data": _session_packet(th, lat, lap, kz)})
+			if li == 5 and not rewound and absf(th - 3.0) < step * 0.5:
+				th -= 0.5   # rewind (once)
+				rewound = true
+			th += step
+		lap += 1
+	var r := ForzaSession.build(pk, "Session Loop")
+	check(r.ok, "session: track built (%s)" % r.get("error", ""))
+	if not r.ok:
+		return
+	var info: Dictionary = r.info
+	check(bool(info.closed) and bool(info.mirrored), "session: loop + Forza handedness")
+	check(absf(float(info.length_m) - TAU * 60.0) < 10.0, "session: length %.0f m ~ %.0f" % [info.length_m, TAU * 60.0])
+	check(absf(float(info.width_m) - 10.0) < 0.8, "session: road width from tarmac contacts %.2f m ~ 10 (grass excursion ignored)" % info.width_m)
+	check(int(info.rewinds) >= 1, "session: rewind split out (%d)" % info.rewinds)
+	var banks: Array = r.spec.banks
+	var bavg := 0.0
+	for bk: float in banks:
+		bavg += bk
+	bavg /= banks.size()
+	# Mirroring keeps the driver's right on the right, so Forza's higher right side stays the right.
+	check(absf(bavg - 0.06) < 0.02, "session: camber from height across the road %.3f ~ 0.06" % bavg)
+	var kr: Array = r.spec.get("kerb_ranges", [])
+	var found := false
+	for k: Dictionary in kr:
+		var mid := fposmod((float(k.start) + float(k.end)) * 0.5 - float(r.spec.start), 1.0)
+		if absf(mid - 4.25 / TAU) < 0.05:
+			found = true
+	check(found, "session: kerb found on the inside where the rumble strip is (%s, start %s)" % [str(kr), r.spec.start])
+	check(float(info.runoff) <= 1.5, "session: shoulder width from rough contacts (%.1f m)" % info.runoff)
+	check((TrackSpec.validate(r.spec).errors as Array).is_empty(), "session: track validates")
 
 
 func test_physics() -> void:

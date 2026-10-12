@@ -94,6 +94,8 @@ Rebuild your favourite Forza Horizon / Motorsport drift zones by driving them:
    - passes don't need to be perfect: edges can be recorded in several overlapping pieces or driven backwards, and turnarounds/overshoots are cut off; hairpins keep their walls out of the other leg.
    Then **Open in Track Editor** (walls, zones, clips), **Save + Drive**, or **Export for Assetto Corsa**.
 
+**Build track from this session / from a session file** works the track out from a whole raw session: every wheel contact is placed from the car's position and heading, Forza's per-wheel surface value says tarmac / rough ground / rumble strip, and for every metre of road the tarmac contacts give the edges, rumble-strip contacts the kerbs (and their width), rough contacts beyond the edge the shoulder width, and the car's height across the road the elevation and camber. Rewinds and resets are skipped and the start line comes from the lap counter.
+
 **Record whole session (raw)** saves every telemetry packet of a session (e.g. 20 minutes of Rivals laps, wipeouts included) to `%APPDATA%\DriftLab\recordings\raw\*.fzr` (~1.2 MB/min) so the track can be analysed again later without re-driving.
 
 Recordings are saved to `%APPDATA%\DriftLab\recordings` so they can be shared or rebuilt later. The game's packet layout and its axis handedness are detected from the physics (speed vs. velocity, lateral g in corners), not hard-coded, so newer games (e.g. Forza Horizon 6) with a shifted layout are found by scanning the packet.

@@ -202,6 +202,7 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 			var b := PackedFloat32Array()
 			for i in n:
 				var on := false
+				var kw := kerb_w
 				if ranges.is_empty():
 					on = absf(curv[i]) > 1.0 / 70.0
 				else:
@@ -209,6 +210,7 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 					for r: Dictionary in ranges:
 						if (str(r.get("side", "")) == "right") == (side > 0.0) and f >= float(r.get("start", 0.0)) and f <= float(r.get("end", 0.0)):
 							on = true
+							kw = clampf(float(r.get("width", kerb_w)), 0.3, 3.0)
 							break
 				mask.append(1 if on else 0)
 				if ranges.is_empty():
@@ -216,7 +218,7 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 					b.append(side * (width[i] * 0.5 + kerb_w))
 				else:
 					# Recorded kerbs were driven over, so they're part of the road width.
-					a.append(side * (width[i] * 0.5 - kerb_w))
+					a.append(side * (width[i] * 0.5 - kw))
 					b.append(side * width[i] * 0.5)
 				cols.append(Color(0.85, 0.1, 0.1) if int(float(s.dist[i]) / 2.0) % 2 == 0 else Color(0.95, 0.95, 0.95))
 			# Grow auto masks a little so kerbs start before the corner
@@ -398,7 +400,11 @@ static func _build_markers(root: Node3D, spec: Dictionary, s: Dictionary) -> voi
 	bm.size = Vector3(float(s.width[i0]), 0.02, 1.2)
 	line.mesh = bm
 	line.material_override = _mat(Color(0.95, 0.95, 0.95), 0.5)
-	line.transform = TrackSpec.transform_at(s, float(spec.start), 0.01)
+	# Tilt with the road's camber so the line lies flat on a banked surface.
+	var fwd: Vector3 = (s.tangent as PackedVector3Array)[i0]
+	var banks: PackedFloat32Array = s.get("bank", PackedFloat32Array())
+	var across: Vector3 = ((s.right as PackedVector3Array)[i0] + Vector3.UP * (banks[i0] if i0 < banks.size() else 0.0)).normalized()
+	line.transform = Transform3D(Basis(across, (-fwd).cross(across), -fwd), pos[i0] + Vector3.UP * 0.012)
 	root.add_child(line)
 	# Clipping points: tall poles plus a ground ring.
 	var clip_root := Node3D.new()

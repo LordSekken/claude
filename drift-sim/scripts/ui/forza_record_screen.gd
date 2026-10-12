@@ -59,6 +59,16 @@ func _ready() -> void:
 	_raw_lbl = UiUtil.label("", 15, Color(0.6, 0.9, 0.6))
 	rrow.add_child(_raw_lbl)
 	vb.add_child(rrow)
+	var brow := HBoxContainer.new()
+	brow.add_child(UiUtil.button("Build track from this session", func() -> void:
+		if raw.path != "" and not raw.is_open():
+			_build_session(raw.path)
+		else:
+			_status.text = "Record a session first (or load one)."
+		, 40))
+	brow.add_child(UiUtil.button("Build track from a session file...", func() -> void:
+		UiUtil.file_dialog(self, PackedStringArray(["*.fzr ; Forza sessions"]), _build_session), 40))
+	vb.add_child(brow)
 	_list = UiUtil.label("No passes yet.", 15)
 	vb.add_child(_list)
 	var row2 := HBoxContainer.new()
@@ -178,6 +188,34 @@ func _process(dt: float) -> void:
 			var p: Vector3 = _last.pos
 			_live.text = "%s · %d packets/s · %d km/h · position %.1f, %.1f, %.1f · %s%s" % [tele.format_name, int(_pkt_rate), int(float(_last.speed) * 3.6), p.x, p.y, p.z,
 				_surface_text(_last), ("   ● RECORDING %d m" % int(current.length())) if recording and current else ""]
+
+
+## Builds the track from a whole raw session (all laps, every wheel contact).
+func _build_session(path: String) -> void:
+	_status.text = "Working out the track from %s..." % path.get_file()
+	await get_tree().process_frame
+	var pk := ForzaRawLog.read(path)
+	if pk.is_empty():
+		_status.text = "[color=#ff6666]That isn't a Drift Lab session file.[/color]"
+		return
+	var r := ForzaSession.build(pk, _name.text)
+	if not r.ok:
+		_status.text = "[color=#ff6666]%s[/color]" % r.error
+		return
+	result_spec = r.spec
+	var info: Dictionary = r.info
+	var v := TrackSpec.validate(result_spec)
+	var txt := "[color=#66ff88]Track built from %.1f minutes of driving: %d m %s, road %.1f m wide (%.1f-%.1f), elevation change %.1f m.[/color]\n" % [
+		float(info.minutes), int(info.length_m), "loop" if info.closed else "point-to-point", float(info.width_m), float(info.width_min), float(info.width_max), float(info.elevation_m)]
+	txt += "Road edges found along %d%% of the track, %d kerb sections (%.1f m wide), shoulders %.1f m, camber up to %.0f%%, %d rewinds/resets skipped.\n" % [
+		int(float(info.edge_cover) * 100.0), int(info.kerbs), float(info.kerb_width), float(info.runoff), float(info.max_bank_pct), int(info.rewinds)]
+	for e: String in v.errors:
+		txt += "[color=#ff6666]✖ %s[/color]\n" % e
+	for w: String in v.warnings:
+		txt += "[color=#ffcc66]⚠ %s[/color]\n" % w
+	_status.text = txt
+	var prev := TrackRaster.render(result_spec, 420, Color(0.1, 0.1, 0.12), Color(0.95, 0.95, 0.95), true)
+	_preview.texture = ImageTexture.create_from_image(prev.image)
 
 
 ## Live per-wheel surface readout so you can see kerbs/grass being picked up.
