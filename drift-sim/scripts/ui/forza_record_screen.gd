@@ -25,6 +25,9 @@ var _rec_btn: Button
 var _name: LineEdit
 var _width: SpinBox
 var _preview: TextureRect
+var raw := ForzaRawLog.new()
+var _raw_btn: Button
+var _raw_lbl: Label
 var result_spec: Dictionary = {}
 
 
@@ -49,6 +52,13 @@ func _ready() -> void:
 	_rec_btn = UiUtil.button("Record", _toggle_record, 56)
 	_rec_btn.add_theme_font_size_override("font_size", 24)
 	vb.add_child(_rec_btn)
+	vb.add_child(UiUtil.label("Or record a whole session: start this, then just drive (laps in Rivals, wipeouts and all). Every packet is saved so the track can be worked out from all of it later.", 15, Color(0.75, 0.75, 0.8)))
+	var rrow := HBoxContainer.new()
+	_raw_btn = UiUtil.button("● Record whole session (raw)", _toggle_raw, 44)
+	rrow.add_child(_raw_btn)
+	_raw_lbl = UiUtil.label("", 15, Color(0.6, 0.9, 0.6))
+	rrow.add_child(_raw_lbl)
+	vb.add_child(rrow)
 	_list = UiUtil.label("No passes yet.", 15)
 	vb.add_child(_list)
 	var row2 := HBoxContainer.new()
@@ -113,6 +123,23 @@ func _toggle_record() -> void:
 		_update_list()
 
 
+func _toggle_raw() -> void:
+	if raw.is_open():
+		raw.close()
+		_raw_btn.text = "● Record whole session (raw)"
+		_raw_lbl.text = "Saved %s (%d packets, %.1f MB)" % [ProjectSettings.globalize_path(raw.path), raw.packets, raw.bytes / 1048576.0]
+		OS.shell_open(ProjectSettings.globalize_path(raw.path.get_base_dir()))
+		return
+	if not listening:
+		_listen()
+	var stamp := Time.get_datetime_string_from_system().replace(":", "-").replace("T", "_")
+	var p := "user://recordings/raw/%s_%s.fzr" % [JsonUtil.slugify(_name.text), stamp]
+	if raw.open(p):
+		_raw_btn.text = "■ Stop session recording"
+	else:
+		_raw_lbl.text = "Couldn't create %s" % ProjectSettings.globalize_path(p)
+
+
 func _update_list() -> void:
 	if passes.is_empty():
 		_list.text = "No passes yet."
@@ -130,6 +157,8 @@ func _process(dt: float) -> void:
 	while udp.get_available_packet_count() > 0:
 		var pkt := udp.get_packet()
 		_pkt_count += 1
+		if raw.is_open():
+			raw.write(pkt)
 		var s := tele.parse(pkt)
 		if s.is_empty():
 			continue
@@ -141,6 +170,8 @@ func _process(dt: float) -> void:
 		_pkt_rate = _pkt_count / _rate_t
 		_pkt_count = 0
 		_rate_t = 0.0
+		if raw.is_open():
+			_raw_lbl.text = "● %.1f min, %d packets, %.1f MB" % [raw.minutes(), raw.packets, raw.bytes / 1048576.0]
 		if _last.is_empty():
 			_live.text = "Listening on port %d - %d packets/s%s" % [int(_port.value), int(_pkt_rate), "" if _pkt_rate > 0 else " (nothing yet: check Data Out is ON and the IP/port match)"] + (" (drive a little so the format can be detected)" if _pkt_rate > 0 else "")
 		else:
@@ -250,4 +281,5 @@ func _export_ac() -> void:
 
 
 func _exit_tree() -> void:
+	raw.close()
 	udp.close()

@@ -29,6 +29,7 @@ func _init() -> void:
 	test_kn5()
 	test_forza()
 	test_forza_messy()
+	test_forza_raw_log()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -477,6 +478,23 @@ func test_forza_messy() -> void:
 	var m_ok := TrackBuilder._clear_mask(smp, ok_off)
 	check(m_wide.count(0) > 0, "builder: walls that would cut into the other hairpin leg are trimmed (%d)" % m_wide.count(0))
 	check(m_ok.count(0) < m_ok.size() * 0.1, "builder: walls at the edge mostly kept (%d trimmed of %d)" % [m_ok.count(0), m_ok.size()])
+
+
+func test_forza_raw_log() -> void:
+	var path := ProjectSettings.globalize_path("user://test_raw/session.fzr")
+	var rlog := ForzaRawLog.new()
+	check(rlog.open(path), "raw log: file created")
+	var pkts := []
+	for i in 50:
+		var b := _forza_packet(244, 324, Vector3(i, 2.0, -i), 20.0, 1.0, i % 16)
+		pkts.append(b)
+		rlog.write(b)
+	rlog.close()
+	var back := ForzaRawLog.read(path)
+	check(back.size() == 50 and (back[49].data as PackedByteArray) == pkts[49], "raw log: every packet reads back unchanged (%d)" % back.size())
+	var t := ForzaTelemetry.new()
+	var s := t.parse(back[10].data)
+	check(not s.is_empty() and (s.pos as Vector3).is_equal_approx(Vector3(10, 2, -10)), "raw log: packets replay through the parser")
 
 
 func test_physics() -> void:
