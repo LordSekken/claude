@@ -4,7 +4,7 @@ extends RefCounted
 ## dropped straight into content/tracks - no Blender / ksEditor step.
 ##
 ## Inverse of Kn5Loader: Godot (x, y, z) -> AC (-x, y, -z) (a 180 degree turn
-## about Y; winding unchanged). Meshes are baked to world space and split to
+## about Y; triangles ordered as AC front faces). Meshes are baked to world space and split to
 ## stay under the 16-bit index limit. Materials are chosen from the AC
 ## physics name (1ROAD, 1KERB, ...): with the HD texture pack (hd_textures/,
 ## CC0 photo-scanned DDS from Poly Haven) road/grass/dirt/gravel/walls get
@@ -234,10 +234,9 @@ func _add_mesh(mi: MeshInstance3D, name: String, xf: Transform3D) -> void:
 				cu = PackedVector2Array()
 				ci = PackedInt32Array()
 				remap.clear()
-			# Front faces must wind clockwise as seen from the normal side (Godot's
-			# convention, which maps to AC front faces). Track strips are built the
-			# other way round and drawn double-sided in Drift Lab, so fix the order
-			# here.
+			# AC front faces wind counter-clockwise seen from the normal side in
+			# Godot's coordinates (the opposite of Godot's own convention), so
+			# every triangle is ordered that way regardless of how it was built.
 			var order := [0, 1, 2]
 			var q0 := xf * v[idx[t]]
 			var q1 := xf * v[idx[t + 1]]
@@ -246,7 +245,7 @@ func _add_mesh(mi: MeshInstance3D, name: String, xf: Transform3D) -> void:
 			for k in 3:
 				var si := idx[t + k]
 				nsum += basis_n * (nrm[si] if si < nrm.size() else Vector3.UP)
-			if (q1 - q0).cross(q2 - q0).dot(nsum) > 0.0:
+			if (q1 - q0).cross(q2 - q0).dot(nsum) < 0.0:
 				order = [0, 2, 1]
 			for k: int in order:
 				var src := idx[t + k]

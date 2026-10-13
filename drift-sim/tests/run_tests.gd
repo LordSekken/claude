@@ -195,6 +195,23 @@ func test_ac_export() -> void:
 	if kn.ok:
 		var names: Array = kn.named.keys()
 		check(names.any(func(n: String) -> bool: return n.begins_with("1ROAD")) and names.any(func(n: String) -> bool: return n.begins_with("1WALL")), "kn5 has 1ROAD and 1WALL meshes")
+		# The road must face up for AC. The loader turns AC front faces into
+		# Godot front faces (clockwise seen from above), so check that here.
+		var road0: MeshInstance3D = null
+		for n: String in names:
+			if n.begins_with("1ROAD") and kn.named[n] is MeshInstance3D:
+				road0 = kn.named[n]
+				break
+		if road0:
+			var arr := road0.mesh.surface_get_arrays(0)
+			var vv: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var ii: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+			var up_faces := 0
+			for t in range(0, mini(ii.size(), 300), 3):
+				var nrm := (vv[ii[t + 1]] - vv[ii[t]]).cross(vv[ii[t + 2]] - vv[ii[t]])
+				if nrm.y < 0.0:
+					up_faces += 1   # Godot: clockwise from above = front face up
+			check(up_faces == mini(ii.size(), 300) / 3, "kn5 export: road faces point up for AC (%d of %d)" % [up_faces, mini(ii.size(), 300) / 3])
 		if Kn5Writer.hd_texture_dir() != "":
 			# HD pack installed: the road must carry the 4K photo-scanned texture.
 			var road: MeshInstance3D = null

@@ -8,7 +8,8 @@ extends RefCounted
 ## then a node tree (1 = dummy with 4x4 matrix, 2 = mesh, 3 = skinned mesh).
 ## AC cars face +Z with +X to the car's left (right-handed, Y up); ours face
 ## -Z with +X right, so everything is turned 180 degrees about Y:
-## (x, y, z) -> (-x, y, -z). A rotation, so triangle winding is unchanged.
+## (x, y, z) -> (-x, y, -z). AC front faces wind opposite to Godot's, so each
+## triangle's order is reversed on load.
 
 var f: FileAccess
 var version := 0
@@ -191,8 +192,9 @@ func _build_mesh(raw: PackedFloat32Array, stride: int, vcount: int, idx: PackedB
 	indices.resize(icount)
 	for i in range(0, icount - 2, 3):
 		indices[i] = idx.decode_u16(i * 2)
-		indices[i + 1] = idx.decode_u16(i * 2 + 2)
-		indices[i + 2] = idx.decode_u16(i * 2 + 4)
+		# AC (DirectX) front faces wind the other way from Godot's.
+		indices[i + 1] = idx.decode_u16(i * 2 + 4)
+		indices[i + 2] = idx.decode_u16(i * 2 + 2)
 	var mi := MeshInstance3D.new()
 	if vcount == 0 or icount < 3:
 		return mi
