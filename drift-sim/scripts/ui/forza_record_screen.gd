@@ -112,6 +112,7 @@ func _ready() -> void:
 	row3.add_child(UiUtil.button("Open in Track Editor", _open_editor, 40))
 	row3.add_child(UiUtil.button("Save + Drive in Drift Lab", _drive, 40))
 	row3.add_child(UiUtil.button("Export for Assetto Corsa...", _export_ac, 40))
+	row3.add_child(UiUtil.button("Export for Unreal...", _export_unreal, 40))
 	vb.add_child(row3)
 
 
@@ -332,6 +333,14 @@ func _export_ac() -> void:
 		return
 	UiUtil.dir_dialog(self, func(dir: String) -> void:
 		var r := AcTrackExporter.export_track(result_spec, dir)
+		_status.text = ("[color=#66ff88]%s[/color]" if r.ok else "[color=#ff6666]%s[/color]") % r.message)
+
+
+func _export_unreal() -> void:
+	if _save_track() == "":
+		return
+	UiUtil.dir_dialog(self, func(dir: String) -> void:
+		var r := UnrealTrackExporter.export_track(result_spec, dir)
 		_status.text = ("[color=#66ff88]%s[/color]" if r.ok else "[color=#ff6666]%s[/color]") % r.message)
 
 

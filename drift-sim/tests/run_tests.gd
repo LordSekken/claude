@@ -25,6 +25,7 @@ func _init() -> void:
 	test_scorer()
 	test_ac_import()
 	test_ac_export()
+	test_unreal_export()
 	await test_agent_tools()
 	test_kn5()
 	test_forza()
@@ -182,6 +183,24 @@ func test_ac_import() -> void:
 		check(absf(rad_to_deg(float(res.spec.steer_lock)) - 60.0) < 0.5, "AC steer lock 540/9 = 60 deg")
 		check(int(res.spec.gears.size()) == 5, "AC gears imported")
 		check(float(res.stats.peak_hp) > 150.0 and float(res.stats.peak_hp) < 360.0, "AC turbo engine power plausible (%s)" % res.stats.peak_hp)
+
+
+func test_unreal_export() -> void:
+	var spec: Dictionary = JsonUtil.load_file("res://tracks/kanto_lot.json")
+	var out := ProjectSettings.globalize_path("user://test_unreal_export")
+	var r := UnrealTrackExporter.export_track(spec, out)
+	check(r.ok, "Unreal export: %s" % r.message)
+	var glb := out.path_join("kanto_lot/kanto_lot.glb")
+	var b := FileAccess.get_file_as_bytes(glb)
+	check(b.size() > 1000 and b.decode_u32(8) == b.size(), "glb written with a consistent length")
+	var j: Variant = JSON.parse_string(b.slice(20, 20 + b.decode_u32(12)).get_string_from_utf8()) if b.size() > 20 else null
+	var names: Array = (j.meshes as Array).map(func(m: Dictionary) -> String: return str(m.get("name", ""))) if j is Dictionary else []
+	check(names.has("START") and names.has("START_AHEAD"), "spawn markers exported")
+	check(names.any(func(n: String) -> bool: return n.begins_with("ROAD_")) and names.any(func(n: String) -> bool: return n.begins_with("WALL_")), "surface-named meshes: %s" % [names])
+	var raw := b.slice(20, 20 + b.decode_u32(12)).get_string_from_utf8()
+	check(not raw.contains("\"mesh\":0.0") and not raw.contains(".0,\"mode\""), "glTF indices are integers")
+	var st := GLTFState.new()
+	check(GLTFDocument.new().append_from_file(glb, st) == OK and st.get_meshes().size() == names.size(), "glb re-imports")
 
 
 func test_ac_export() -> void:

@@ -156,6 +156,7 @@ func _build_panel() -> void:
 		if _save():
 			navigate.emit("drive")))
 	_panel.add_child(UiUtil.button("Export for Assetto Corsa...", _export_ac))
+	_panel.add_child(UiUtil.button("Export for Unreal...", _export_unreal))
 	_status = RichTextLabel.new()
 	_status.bbcode_enabled = true
 	_status.fit_content = true
@@ -501,6 +502,16 @@ func _open() -> void:
 			selected = -1
 			_build_panel()
 			_changed(true))
+
+
+func _export_unreal() -> void:
+	var v := TrackSpec.validate(spec)
+	if (v.errors as Array).size() > 0:
+		_set_status("[color=#ff6666]Fix errors first.[/color]")
+		return
+	UiUtil.dir_dialog(self, func(dir: String) -> void:
+		var r := UnrealTrackExporter.export_track(spec, dir)
+		_set_status(("[color=#66ff88]%s[/color]" if r.ok else "[color=#ff6666]%s[/color]") % r.message))
 
 
 func _export_ac() -> void:

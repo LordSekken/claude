@@ -5,3 +5,9 @@ Saved/
 DerivedDataCache/
 .vs/
 *.sln
+DriftGame/SourceTextures/
+DriftGame/Content/Tracks/
+DriftGame/Content/Maps/
+DriftGame/Content/DriftMaterials/
+DriftGame/Tracks/*/
+__pycache__/
