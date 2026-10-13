@@ -290,6 +290,17 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 	return {"ok": true, "spec": spec, "stats": stats, "warnings": warnings, "errors": errors}
 
 
+## Assembled spec as JSON for DriftCore (the Unreal physics): {"id", "spec"}.
+static func spec_json(spec: Dictionary, id: String) -> String:
+	var clean := {}
+	for k: String in spec:
+		var v: Variant = spec[k]
+		if v is PackedFloat32Array or v is PackedFloat64Array:
+			v = Array(v)
+		clean[k] = v
+	return JSON.stringify({"id": id, "format": "drift_core_car_1", "spec": clean}, "\t")
+
+
 static func _cylinders(eng: Dictionary) -> int:
 	if eng.has("cylinders"):
 		return int(eng.cylinders)

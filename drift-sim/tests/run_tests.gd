@@ -69,6 +69,8 @@ func test_parts_and_builds() -> void:
 	check(float(drift.stats.peak_hp) > 240.0 and float(drift.stats.peak_hp) < 300.0, "tuned EJ205 power plausible (%s)" % drift.stats.peak_hp)
 	check(float(drift.stats.mass_kg) < float(stock.stats.mass_kg), "drift build lighter than stock")
 	check((drift.warnings as Array).any(func(w: Variant) -> bool: return str(w).contains("AWD->RWD")), "RWD conversion note present")
+	var dj: Variant = JSON.parse_string(CarBuilder.spec_json(drift.spec, "legacy"))
+	check(dj is Dictionary and dj.spec.drivetrain == "RWD" and (dj.spec.curve_nm as Array).size() > 3 and float(dj.spec.final) > 3.0, "DriftCore spec JSON round-trips")
 	var bad := PartsLibrary.validate_part("engines", {"id": "x", "name": "x", "mass_kg": 100, "idle_rpm": 800, "limiter_rpm": 7000, "torque_curve": [[1000, 100], [900, 120], [3000, 50]]})
 	check(bad.size() > 0, "engine with non-increasing rpm rejected")
 	check(absf(CarBuilder.tire_radius("235/40R17", 0.3) - 0.3099) < 0.001, "tyre size parsing")

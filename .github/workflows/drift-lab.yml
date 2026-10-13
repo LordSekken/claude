@@ -71,6 +71,9 @@ jobs:
       - name: Export built-in tracks for Assetto Corsa
         run: ~/godot/godot --headless --path . -s tools/export_ac_tracks.gd -- "$PWD/build/ac_tracks"
 
+      - name: Export car builds for Unreal (DriftCore spec JSON)
+        run: ~/godot/godot --headless --path . -s tools/export_car_specs.gd -- "$PWD/build/windows/car_specs"
+
       - name: Upload Assetto Corsa tracks
         uses: actions/upload-artifact@v4
         with:
