@@ -95,6 +95,19 @@ func _material_for(name: String, mi: MeshInstance3D) -> int:
 	var color := Color(0.6, 0.6, 0.6)
 	if kind == "":
 		var mat := mi.material_override
+		if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
+			# Textured scenery (trees): export its own texture and keep its UVs;
+			# alpha-scissor materials become alpha-tested in AC.
+			var bm := mat as BaseMaterial3D
+			var tex_kind := str(bm.get_meta("export_name", "tex_%d" % bm.get_instance_id()))
+			if not _mat_index.has(tex_kind):
+				var tn := tex_kind + ".dds"
+				_textures[tn] = _dds_rgba(bm.albedo_texture.get_image())
+				var cut := bm.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				_materials.append({"name": "dl_" + tex_kind, "shader": "ksPerPixelAT" if cut else "ksPerPixel", "tex": tn, "normal": "",
+					"spec": 0.02, "exp": 5.0, "alpha_test": cut, "keep_uv": true})
+				_mat_index[tex_kind] = _materials.size() - 1
+			return _mat_index[tex_kind]
 		if mat is BaseMaterial3D:
 			color = (mat as BaseMaterial3D).albedo_color
 		kind = "solid_" + color.to_html(false)
@@ -153,10 +166,22 @@ static func _dds_rgba(src: Image) -> PackedByteArray:
 func _make_texture(kind: String, color: Color) -> PackedByteArray:
 	var img: Image
 	if kind == "kerb":
-		img = Image.create(8, 64, false, Image.FORMAT_RGB8)
-		for y in 64:
-			for x in 8:
-				img.set_pixel(x, y, Color(0.8, 0.08, 0.08) if y < 32 else Color(0.95, 0.95, 0.95))
+		# Red/white blocks (2 m each along the road) with worn paint and tyre rubber.
+		img = Image.create(64, 256, false, Image.FORMAT_RGB8)
+		var kn := FastNoiseLite.new()
+		kn.frequency = 0.09
+		kn.fractal_octaves = 3
+		for y in 256:
+			for x in 64:
+				var base := Color(0.78, 0.07, 0.06) if y < 128 else Color(0.93, 0.93, 0.9)
+				var n := kn.get_noise_2d(x, y)
+				var wear := clampf(0.88 + 0.12 * n, 0.7, 1.0)
+				var c := Color(base.r * wear, base.g * wear, base.b * wear)
+				if y % 128 < 3 or y % 128 > 124:
+					c = c.darkened(0.25)   # block joints
+				if n > 0.45:
+					c = c.lerp(Color(0.12, 0.12, 0.12), 0.35)   # rubber marks
+				img.set_pixel(x, y, c)
 		return _dds_rgba(img)
 	if kind.begins_with("solid_"):
 		img = Image.create(4, 4, false, Image.FORMAT_RGB8)
@@ -255,7 +280,8 @@ func _add_mesh(mi: MeshInstance3D, name: String, xf: Transform3D) -> void:
 					remap[src] = cv.size()
 					cv.append(wp)
 					cn.append(wn)
-					cu.append(_uv_for(key, wp, wn, uv[src] if src < uv.size() else Vector2.ZERO))
+					var src_uv := uv[src] if src < uv.size() else Vector2.ZERO
+					cu.append(src_uv if bool((_materials[mat] as Dictionary).get("keep_uv", false)) else _uv_for(key, wp, wn, src_uv))
 				ci.append(remap[src])
 		if not ci.is_empty():
 			_meshes.append({"name": "%s_%d" % [name, part] if part > 0 else name, "mat": mat, "verts": cv, "normals": cn, "uvs": cu, "tangents": _tangents(cv, cn, cu, ci), "indices": ci})
@@ -328,9 +354,9 @@ func _save(path: String) -> int:
 		_str(f, m.name)
 		_str(f, str(m.shader))
 		f.store_8(0)   # blend: opaque
-		f.store_8(0)   # alpha tested
+		f.store_8(1 if bool(m.get("alpha_test", false)) else 0)   # alpha tested
 		f.store_32(0)  # depth mode
-		var props := [["ksAmbient", 0.45], ["ksDiffuse", 0.55], ["ksSpecular", float(m.spec)], ["ksSpecularEXP", float(m.exp)], ["ksEmissive", 0.0], ["ksAlphaRef", 0.0]]
+		var props := [["ksAmbient", 0.45], ["ksDiffuse", 0.55], ["ksSpecular", float(m.spec)], ["ksSpecularEXP", float(m.exp)], ["ksEmissive", 0.0], ["ksAlphaRef", 0.5 if bool(m.get("alpha_test", false)) else 0.0]]
 		f.store_32(props.size())
 		for p: Array in props:
 			_str(f, p[0])

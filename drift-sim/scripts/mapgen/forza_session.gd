@@ -340,7 +340,8 @@ static func build(packets: Array, name: String) -> Dictionary:
 	var spec := {
 		"name": name, "closed": closed, "points": points, "width": snappedf(avg_w, 0.1),
 		"widths": wlist, "banks": blist,
-		"runoff": snappedf(runoff, 0.1), "runoff_surface": "grass",
+		"runoff": snappedf(runoff, 0.1), "runoff_surface": "dirt",
+		"scenery": {"style": "forest", "seed": 1, "density": 1.0, "time_of_day": "day"},
 		"walls": {"left": true, "right": true, "height": 1.0},
 		"kerbs": not kerb_ranges.is_empty(),
 		"zones": [] if closed else [{"name": name, "start": 0.02, "end": 0.98}],

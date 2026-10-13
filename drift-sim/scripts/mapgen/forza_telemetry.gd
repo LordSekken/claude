@@ -527,7 +527,8 @@ static func build_track(passes: Array, name: String, default_width := 12.0) -> D
 		"points": points,
 		"width": snappedf(avg_w, 0.1),
 		"runoff": 0.5,   # walls just off the recorded edge, like a touge guardrail
-		"runoff_surface": "grass",
+		"runoff_surface": "dirt",
+		"scenery": {"style": "forest", "seed": 1, "density": 1.0, "time_of_day": "day"},
 		"walls": {"left": true, "right": true, "height": 1.0},
 		"kerbs": not kerb_ranges.is_empty(),
 		"zones": [{"name": name, "start": 0.02, "end": 0.98}] if not closed else [],

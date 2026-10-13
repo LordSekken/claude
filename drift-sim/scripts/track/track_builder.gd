@@ -33,10 +33,17 @@ static func build(spec_in: Dictionary) -> Dictionary:
 		_build_road(root, spec, samples, counter)
 	for pad: Dictionary in spec.pads:
 		_build_pad(root, pad, counter)
-	_build_ground(root, min_y - 0.03)
+	var forest := str((spec.scenery as Dictionary).get("style", "")) == "forest" and has_line
+	if forest:
+		Landscape.build_terrain(root, spec, samples, _mat(SURFACE_COLORS.grass, 0.95))
+	else:
+		_build_ground(root, min_y - 0.03)
 	if has_line:
 		_build_markers(root, spec, samples)
-		_build_scenery(root, spec, samples)
+		if forest:
+			Landscape.build_trees(root, spec, samples)
+		else:
+			_build_scenery(root, spec, samples)
 	_build_environment(root, str(spec.scenery.get("time_of_day", "day")))
 	if has_line:
 		var start := TrackSpec.transform_at(samples, float(spec.start), 0.0)
@@ -232,7 +239,7 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 							j = (j + n) % n
 						if j >= 0 and j < n:
 							grown[j] = 1
-			_add_surface(root, _strip(s, a, b, 0.0 if ranges.is_empty() else 0.02, 0.04, grown, cols), kerb_mat, "kerb", counter)
+			_add_surface(root, _strip(s, a, b, 0.0 if ranges.is_empty() else 0.012, 0.04 if ranges.is_empty() else 0.07, grown, cols), kerb_mat, "kerb", counter)
 
 	# Run-off both sides (trimmed where it would cut into another section of
 	# road, e.g. the other leg of a hairpin).

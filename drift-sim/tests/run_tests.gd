@@ -31,6 +31,7 @@ func _init() -> void:
 	test_forza_messy()
 	test_forza_raw_log()
 	test_forza_session()
+	test_landscape()
 	await test_physics()
 	await test_game_smoke()
 	print("\n%d passed, %d failed" % [passes, failures])
@@ -597,6 +598,56 @@ func test_forza_session() -> void:
 	check(found, "session: kerb found on the inside where the rumble strip is (%s, start %s)" % [str(kr), r.spec.start])
 	check(float(info.runoff) <= 1.5, "session: shoulder width from rough contacts (%.1f m)" % info.runoff)
 	check((TrackSpec.validate(r.spec).errors as Array).is_empty(), "session: track validates")
+
+
+func test_landscape() -> void:
+	var spec: Dictionary = JsonUtil.load_file("res://tracks/usui_touge.json")
+	spec["scenery"] = {"style": "forest", "seed": 3, "density": 1.0, "time_of_day": "day"}
+	var b := TrackBuilder.build(spec)
+	var root: Node3D = b.root
+	var s: Dictionary = b.samples
+	var ground: StaticBody3D = root.get_node_or_null("1GRASS_ground")
+	check(ground != null, "landscape: terrain built")
+	var g := Landscape._index(s)
+	var noise := Landscape._noise(3)
+	var nspec := TrackSpec.normalized(spec)
+	var below := 0
+	var pos: PackedVector3Array = s.pos
+	for i in range(0, pos.size(), 7):
+		if Landscape.height_at(s, nspec, g, noise, pos[i].x, pos[i].z) < pos[i].y - 0.1:
+			below += 1
+	var checked := int(ceil(pos.size() / 7.0))
+	check(below == checked, "landscape: terrain stays under the road (%d of %d)" % [below, checked])
+	var trees: MeshInstance3D = root.get_node_or_null("trees_pine")
+	if trees == null:
+		trees = root.get_node_or_null("trees_leafy")
+	check(trees != null, "landscape: trees placed")
+	var on_road := 0
+	for name in ["trees_pine", "trees_leafy"]:
+		var t: MeshInstance3D = root.get_node_or_null(name)
+		if t == null:
+			continue
+		var vv: PackedVector3Array = t.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		for k in range(0, vv.size(), 24):   # first vertex of each tree's first quad
+			var v := vv[k]
+			for i in range(0, pos.size(), 2):
+				if Vector2(v.x - pos[i].x, v.z - pos[i].z).length() < float(s.width[i]) * 0.5 + 1.0:
+					on_road += 1
+					break
+	check(on_road == 0, "landscape: no tree on any section of road (%d)" % on_road)
+	root.free()
+	var out := ProjectSettings.globalize_path("user://test_forest_export")
+	var r := AcTrackExporter.export_track(spec, out)
+	check(r.ok, "landscape: AC export ok")
+	var kn := Kn5Loader.load_model(out.path_join("usui_downhill/usui_downhill.kn5"), "", false)
+	var cut := false
+	if kn.ok:
+		for n: String in kn.named:
+			if n.begins_with("trees_") and kn.named[n] is MeshInstance3D:
+				var m: Material = (kn.named[n] as MeshInstance3D).get_active_material(0)
+				cut = m is StandardMaterial3D and (m as StandardMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+		kn.root.free()
+	check(cut, "landscape: trees exported as alpha-tested cut-outs")
 
 
 func test_physics() -> void:

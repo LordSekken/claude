@@ -25,6 +25,8 @@ MATERIALS = {
     "gravel": ("gravel_floor_02", "2k", "2k"),
     "concrete": ("brushed_concrete_03", "2k", "2k"),
 }
+# Colour gain per channel applied to the diffuse map (kind -> (r, g, b)).
+TINT = {"grass": (0.72, 1.0, 0.55)}
 API = "https://api.polyhaven.com"
 UA = {"User-Agent": "DriftLab-texture-builder/1.0"}
 
@@ -78,6 +80,11 @@ def build(kind: str, asset: str, dres: str, nres: str, out: str) -> dict:
         # Bake ambient occlusion into the colour (softened) for depth in AC.
         ao = ao.point(lambda v: int(150 + v * 105 / 255))
         diff = ImageChops.multiply(diff, Image.merge("RGB", (ao, ao, ao)))
+    if kind in TINT:
+        # Pull dry, yellowish scans toward a fresher colour (per-channel gain).
+        gr, gg, gb = TINT[kind]
+        r, g, b = diff.split()
+        diff = Image.merge("RGB", (r.point(lambda v: min(255, int(v * gr))), g.point(lambda v: min(255, int(v * gg))), b.point(lambda v: min(255, int(v * gb)))))
     gloss = rough.point(lambda v: 255 - v)
     d = diff.copy()
     d.putalpha(gloss)
