@@ -191,6 +191,7 @@ static func _build_road(root: Node3D, spec: Dictionary, s: Dictionary, counter: 
 			a.append(side * (width[i] * 0.5 - 0.45))
 			b.append(side * (width[i] * 0.5 - 0.30))
 		var mi := MeshInstance3D.new()
+		mi.name = "lines_left" if side < 0.0 else "lines_right"
 		mi.mesh = _strip(s, a, b, 0.012, 0.012)
 		mi.material_override = line_mat
 		root.add_child(mi)
@@ -403,6 +404,7 @@ static func _build_markers(root: Node3D, spec: Dictionary, s: Dictionary) -> voi
 	# Start/finish line.
 	var i0 := clampi(int(float(spec.start) * n), 0, n - 1)
 	var line := MeshInstance3D.new()
+	line.name = "start_line"
 	var bm := BoxMesh.new()
 	bm.size = Vector3(float(s.width[i0]), 0.02, 1.2)
 	line.mesh = bm

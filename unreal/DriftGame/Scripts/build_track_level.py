@@ -155,7 +155,9 @@ def surface_material(surf):
         mel.connect_material_property(sd, "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
     sn = sample(n, 0, unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
     mel.connect_material_property(sn, "RGB", unreal.MaterialProperty.MP_NORMAL)
-    sr = sample(r, 300, unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    # Sampler type must match the texture's compression (TC_MASKS -> Masks), or
+    # the material fails to compile and renders as the default checkerboard.
+    sr = sample(r, 300, unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
     mel.connect_material_property(sr, "R", unreal.MaterialProperty.MP_ROUGHNESS)
     mel.recompile_material(mat)
     eal.save_loaded_asset(mat)
@@ -288,12 +290,13 @@ def build(folder):
         if upper.endswith("START_AHEAD") or upper.endswith("START"):
             markers["ahead" if upper.endswith("START_AHEAD") else "start"] = mesh.get_bounds().origin
             continue
-        is_tree = "TREE" in upper
-        set_collision(mesh, not is_tree)
+        # Trees and painted lines are visual only (lines sit 1 cm above the road).
+        visual_only = "TREE" in upper or "LINE" in upper
+        set_collision(mesh, not visual_only)
         actor = eas.spawn_actor_from_object(mesh, unreal.Vector(0, 0, 0), unreal.Rotator())
         actor.set_actor_label(name)
         comp = actor.static_mesh_component
-        if is_tree:
+        if visual_only:
             comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
             continue
         surf = surface_of(name)
