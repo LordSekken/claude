@@ -201,6 +201,23 @@ func test_unreal_export() -> void:
 	check(not raw.contains("\"mesh\":0.0") and not raw.contains(".0,\"mode\""), "glTF indices are integers")
 	var st := GLTFState.new()
 	check(GLTFDocument.new().append_from_file(glb, st) == OK and st.get_meshes().size() == names.size(), "glb re-imports")
+	# Other engines cull back faces: every triangle's front must face along its
+	# normals (Godot front = clockwise, i.e. cross product against the normal).
+	var bad_faces := 0
+	var faces := 0
+	for gm: GLTFMesh in st.get_meshes():
+		var im: ImporterMesh = gm.mesh
+		for si in im.get_surface_count():
+			var arr := im.get_surface_arrays(si)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var nn: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+			for i in range(0, ix.size() - 2, 3):
+				faces += 1
+				var n := nn[ix[i]] + nn[ix[i + 1]] + nn[ix[i + 2]]
+				if (v[ix[i + 1]] - v[ix[i]]).cross(v[ix[i + 2]] - v[ix[i]]).dot(n) > 0.0:
+					bad_faces += 1
+	check(faces > 100 and bad_faces == 0, "exported faces point along their normals (%d of %d backwards)" % [bad_faces, faces])
 
 
 func test_ac_export() -> void:

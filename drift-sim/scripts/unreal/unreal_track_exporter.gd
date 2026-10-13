@@ -153,17 +153,35 @@ static func _bake(mi: MeshInstance3D, src: Node3D) -> ArrayMesh:
 				nrm[i] = (nb * nrm[i]).normalized()
 			arrays[Mesh.ARRAY_NORMAL] = nrm
 		arrays[Mesh.ARRAY_TANGENT] = null
-		if xf.basis.determinant() < 0.0 and arrays[Mesh.ARRAY_INDEX] is PackedInt32Array:
-			var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-			for i in range(0, idx.size() - 2, 3):
-				var t := idx[i + 1]
-				idx[i + 1] = idx[i + 2]
-				idx[i + 2] = t
-			arrays[Mesh.ARRAY_INDEX] = idx
+		_face_normals(arrays)
 		var prim := (mesh as ArrayMesh).surface_get_primitive_type(si) if mesh is ArrayMesh else Mesh.PRIMITIVE_TRIANGLES
 		am.add_surface_from_arrays(prim, arrays)
 		am.surface_set_material(am.get_surface_count() - 1, _export_material(mi, mesh, si))
 	return am if am.get_surface_count() > 0 else null
+
+
+## Track meshes are drawn double-sided in Drift Lab, so their winding was
+## never checked - but other engines cull back faces. Order every triangle so
+## its front (Godot: clockwise) faces the way its vertex normals point.
+static func _face_normals(arrays: Array) -> void:
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var nrm: Variant = arrays[Mesh.ARRAY_NORMAL]
+	if not nrm is PackedVector3Array or (nrm as PackedVector3Array).size() != verts.size():
+		return
+	var normals: PackedVector3Array = nrm
+	var idx: PackedInt32Array
+	if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array and not (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty():
+		idx = arrays[Mesh.ARRAY_INDEX]
+	else:
+		idx = PackedInt32Array(range(verts.size()))
+	for i in range(0, idx.size() - 2, 3):
+		var a := verts[idx[i]]
+		var n := normals[idx[i]] + normals[idx[i + 1]] + normals[idx[i + 2]]
+		if (verts[idx[i + 1]] - a).cross(verts[idx[i + 2]] - a).dot(n) > 0.0:
+			var t := idx[i + 1]
+			idx[i + 1] = idx[i + 2]
+			idx[i + 2] = t
+	arrays[Mesh.ARRAY_INDEX] = idx
 
 
 static func _rel(n: Node3D, root: Node3D) -> Transform3D:
