@@ -108,7 +108,7 @@ func _material_for(name: String, mi: MeshInstance3D) -> int:
 		var spec: Array = {"asphalt": [0.18, 30.0], "concrete": [0.1, 20.0], "gravel": [0.08, 12.0]}.get(kind, [0.04, 6.0])
 		_materials.append({"name": "dl_" + kind, "shader": "ksPerPixelNM", "tex": d, "normal": nm, "spec": spec[0], "exp": spec[1]})
 	else:
-		var tex_name := kind + ".png"
+		var tex_name := kind + ".dds"
 		_textures[tex_name] = _make_texture(kind, color)
 		_materials.append({"name": "dl_" + kind, "shader": "ksPerPixel", "tex": tex_name, "normal": "", "spec": 0.12 if kind == "asphalt" else 0.04, "exp": 25.0})
 	_mat_index[kind] = _materials.size() - 1
@@ -125,6 +125,31 @@ static func _kind_for_key(key: String) -> String:
 	return ""
 
 
+## Uncompressed 32-bit DDS (BGRA, full mip chain) - the same layout AC's own
+## files use for small textures, so no PNG decoding is needed in the game.
+static func _dds_rgba(src: Image) -> PackedByteArray:
+	var img := src.duplicate() as Image
+	img.convert(Image.FORMAT_RGBA8)
+	img.generate_mipmaps()
+	var data := img.get_data()
+	for i in range(0, data.size(), 4):
+		var r := data[i]
+		data[i] = data[i + 2]
+		data[i + 2] = r
+	var h := StreamPeerBuffer.new()
+	h.big_endian = false
+	h.put_data("DDS ".to_ascii_buffer())
+	for v in [124, 0x1 | 0x2 | 0x4 | 0x8 | 0x1000 | 0x20000, img.get_height(), img.get_width(), img.get_width() * 4, 0, img.get_mipmap_count() + 1]:
+		h.put_32(v)
+	for i in 11:
+		h.put_32(0)
+	for v in [32, 0x41, 0, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000, 0x1000 | 0x400000 | 0x8, 0, 0, 0, 0]:
+		h.put_32(v)
+	var out := h.data_array
+	out.append_array(data)
+	return out
+
+
 func _make_texture(kind: String, color: Color) -> PackedByteArray:
 	var img: Image
 	if kind == "kerb":
@@ -132,11 +157,11 @@ func _make_texture(kind: String, color: Color) -> PackedByteArray:
 		for y in 64:
 			for x in 8:
 				img.set_pixel(x, y, Color(0.8, 0.08, 0.08) if y < 32 else Color(0.95, 0.95, 0.95))
-		return img.save_png_to_buffer()
+		return _dds_rgba(img)
 	if kind.begins_with("solid_"):
 		img = Image.create(4, 4, false, Image.FORMAT_RGB8)
 		img.fill(color)
-		return img.save_png_to_buffer()
+		return _dds_rgba(img)
 	var base := {"asphalt": [Color(0.13, 0.13, 0.14), Color(0.26, 0.26, 0.27)], "grass": [Color(0.12, 0.22, 0.08), Color(0.22, 0.36, 0.14)],
 		"gravel": [Color(0.45, 0.41, 0.34), Color(0.66, 0.6, 0.5)], "dirt": [Color(0.32, 0.24, 0.16), Color(0.46, 0.35, 0.24)],
 		"concrete": [Color(0.5, 0.5, 0.48), Color(0.66, 0.66, 0.63)]}
@@ -149,7 +174,7 @@ func _make_texture(kind: String, color: Color) -> PackedByteArray:
 	for y in 256:
 		for x in 256:
 			img.set_pixel(x, y, (cols[0] as Color).lerp(cols[1], n_img.get_pixel(x, y).r))
-	return img.save_png_to_buffer()
+	return _dds_rgba(img)
 
 
 func _uv_for(key: String, world: Vector3, normal: Vector3, uv: Vector2) -> Vector2:

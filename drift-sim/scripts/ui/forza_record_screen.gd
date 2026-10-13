@@ -24,6 +24,7 @@ var _status: RichTextLabel
 var _rec_btn: Button
 var _name: LineEdit
 var _width: SpinBox
+var _camber: SpinBox
 var _preview: TextureRect
 var raw := ForzaRawLog.new()
 var _raw_btn: Button
@@ -89,6 +90,14 @@ func _ready() -> void:
 	_width.value = 12
 	_width.suffix = "m"
 	vb.add_child(UiUtil.row("Road width (if no edge passes)", _width, 260))
+	_camber = SpinBox.new()
+	_camber.min_value = 0
+	_camber.max_value = 100
+	_camber.step = 5
+	_camber.value = 75
+	_camber.suffix = "%"
+	_camber.tooltip_text = "How much of the measured camber/banking goes into the track (100% = as measured)."
+	vb.add_child(UiUtil.row("Camber", _camber, 260))
 	vb.add_child(UiUtil.button("Make track", _make, 52))
 	_status = RichTextLabel.new()
 	_status.bbcode_enabled = true
@@ -190,6 +199,14 @@ func _process(dt: float) -> void:
 				_surface_text(_last), ("   ● RECORDING %d m" % int(current.length())) if recording and current else ""]
 
 
+## Applies the Camber setting to a built spec.
+func _scaled_camber(spec: Dictionary) -> Dictionary:
+	if spec.has("banks"):
+		var k := _camber.value / 100.0
+		spec["banks"] = (spec.banks as Array).map(func(b: Variant) -> float: return snappedf(float(b) * k, 0.001))
+	return spec
+
+
 ## Builds the track from a whole raw session (all laps, every wheel contact).
 func _build_session(path: String) -> void:
 	_status.text = "Working out the track from %s..." % path.get_file()
@@ -202,7 +219,7 @@ func _build_session(path: String) -> void:
 	if not r.ok:
 		_status.text = "[color=#ff6666]%s[/color]" % r.error
 		return
-	result_spec = r.spec
+	result_spec = _scaled_camber(r.spec)
 	var info: Dictionary = r.info
 	var v := TrackSpec.validate(result_spec)
 	var txt := "[color=#66ff88]Track built from %.1f minutes of driving: %d m %s, road %.1f m wide (%.1f-%.1f), elevation change %.1f m.[/color]\n" % [
@@ -239,7 +256,7 @@ func _make() -> void:
 	if not r.ok:
 		_status.text = "[color=#ff6666]%s[/color]" % r.error
 		return
-	result_spec = r.spec
+	result_spec = _scaled_camber(r.spec)
 	var info: Dictionary = r.info
 	var v := TrackSpec.validate(result_spec)
 	var txt := "[color=#66ff88]Track built: %d m, %s, avg width %.1f m%s, elevation change %.1f m.[/color]\n" % [int(info.length_m), "loop" if info.closed else "point-to-point", float(info.width_m), " (from edge passes)" if info.edges else " (set by hand)", float(info.elevation_m)]
