@@ -1,12 +1,12 @@
 /*
- * Drift Lab force-feedback helper.
+ * Drift Lab / DriftGame steering-wheel helper.
  *
- * Godot has no API for DirectInput force feedback, so the game launches this
- * small SDL3 program and streams steering forces to it over UDP (localhost).
- * It drives a constant-force effect (self-aligning torque from the front
- * tyres) plus damper/spring effects on the first FFB wheel it finds
- * (Logitech G920/G29/G923, Thrustmaster, Fanatec, Moza... anything with
- * DirectInput FFB).
+ * Neither Godot nor our Unreal setup can drive DirectInput force feedback, so
+ * the game launches this small program and talks to it over UDP (localhost).
+ * Force feedback goes straight through DirectInput - a constant force
+ * (self-aligning torque from the front tyres) plus damper/spring - the way
+ * Assetto Corsa and most sims do it. The wheel's controls are read with SDL3
+ * and streamed back to the game.
  *
  * Packets in  (game -> helper, port 47811):
  *   "DLFB" f32 force(-1..1, +right) f32 damper(0..1) f32 spring(0..1) f32 gain(0..1)
@@ -17,12 +17,18 @@
  *   "DLIN" u8 axes u8 buttons u8 hat u8 0, f32 axis[axes] (-1..1, raw SDL
  *   order), u32 button bits (button i = bit i, first 32)
  *
+ * Logitech's driver (G920/G29/G923 through G HUB) only accepts a one-axis
+ * cartesian effect on the X axis with a non-zero direction; SDL's haptic
+ * layer never got a force through to the G920, hence raw DirectInput.
+ *
  * Safety: forces fade to zero if no force packet arrives for 250 ms; the
  * helper exits when the game process exits. Log: %TEMP%\DriftLab_ffb.log
  */
+#define DIRECTINPUT_VERSION 0x0800
 #include <SDL3/SDL.h>
 #include <winsock2.h>
 #include <windows.h>
+#include <dinput.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -68,19 +74,6 @@ static int contains_ci(const char *hay, const char *needle) {
 	return 0;
 }
 
-static Sint16 to_level(float f) {
-	if (f > 1.0f) f = 1.0f;
-	if (f < -1.0f) f = -1.0f;
-	return (Sint16)(f * 32767.0f);
-}
-
-static SDL_Haptic *haptic = NULL;
-static SDL_Joystick *wheel_js = NULL; /* the same wheel, for its axes/buttons */
-static char chosen[256] = "";
-static int eff_const = -1, eff_damper = -1, eff_spring = -1;
-static SDL_HapticEffect ce, de, se;
-static char last_problem[300] = "";
-
 static int wheelish(const char *name) {
 	return contains_ci(name, "wheel") || contains_ci(name, "G920") || contains_ci(name, "G29") ||
 		contains_ci(name, "G923") || contains_ci(name, "Driving Force") || contains_ci(name, "Logitech") ||
@@ -88,65 +81,145 @@ static int wheelish(const char *name) {
 		contains_ci(name, "Simucube");
 }
 
-static int setup_effects(void) {
-	Uint32 features = SDL_GetHapticFeatures(haptic);
-	logmsg("features: 0x%08x", (unsigned)features);
-	if (features & SDL_HAPTIC_GAIN) SDL_SetHapticGain(haptic, 100);
-	if (features & SDL_HAPTIC_AUTOCENTER) SDL_SetHapticAutocenter(haptic, 0);
-	/* Single-axis wheels (e.g. the G920 through DirectInput) can reject a
-	 * cartesian direction; SDL's steering-axis mode is made for them. */
-	static const Uint8 dir_types[3] = {SDL_HAPTIC_STEERING_AXIS, SDL_HAPTIC_CARTESIAN, SDL_HAPTIC_POLAR};
-	eff_const = -1;
-	for (int t = 0; t < 3 && eff_const < 0; t++) {
-		SDL_zero(ce);
-		ce.type = SDL_HAPTIC_CONSTANT;
-		ce.constant.direction.type = dir_types[t];
-		if (dir_types[t] == SDL_HAPTIC_CARTESIAN) ce.constant.direction.dir[0] = 1; /* +X: level > 0 pushes right */
-		if (dir_types[t] == SDL_HAPTIC_POLAR) ce.constant.direction.dir[0] = 9000;   /* from the east */
-		ce.constant.length = SDL_HAPTIC_INFINITY;
-		eff_const = SDL_CreateHapticEffect(haptic, &ce);
-		logmsg("constant force, direction type %d: %s", dir_types[t], eff_const >= 0 ? "ok" : SDL_GetError());
-	}
-	if (eff_const < 0) {
-		snprintf(last_problem, sizeof(last_problem), "constant force effect failed: %s", SDL_GetError());
-		logmsg("%s", last_problem);
-		return 0;
-	}
-	if (!SDL_RunHapticEffect(haptic, eff_const, SDL_HAPTIC_INFINITY))
-		logmsg("run constant failed: %s", SDL_GetError());
-	eff_damper = eff_spring = -1;
-	if (features & SDL_HAPTIC_DAMPER) {
-		SDL_zero(de);
-		de.type = SDL_HAPTIC_DAMPER;
-		de.condition.length = SDL_HAPTIC_INFINITY;
-		for (int a = 0; a < 3; a++) { de.condition.right_sat[a] = de.condition.left_sat[a] = 0xFFFF; }
-		eff_damper = SDL_CreateHapticEffect(haptic, &de);
-		if (eff_damper >= 0) SDL_RunHapticEffect(haptic, eff_damper, SDL_HAPTIC_INFINITY);
-	}
-	if (features & SDL_HAPTIC_SPRING) {
-		SDL_zero(se);
-		se.type = SDL_HAPTIC_SPRING;
-		se.condition.length = SDL_HAPTIC_INFINITY;
-		for (int a = 0; a < 3; a++) { se.condition.right_sat[a] = se.condition.left_sat[a] = 0xFFFF; }
-		eff_spring = SDL_CreateHapticEffect(haptic, &se);
-		if (eff_spring >= 0) SDL_RunHapticEffect(haptic, eff_spring, SDL_HAPTIC_INFINITY);
-	}
-	return 1;
+/* --- Force feedback (DirectInput) ---------------------------------------- */
+
+static HWND ff_window;
+static LPDIRECTINPUT8 di;
+static LPDIRECTINPUTDEVICE8 ff_dev;
+static LPDIRECTINPUTEFFECT fx_const, fx_damper, fx_spring;
+static DWORD ff_axis[1];
+static LONG ff_dir[1] = {1};   /* +X: positive magnitude pushes the wheel right */
+static DICONSTANTFORCE cf;
+static DICONDITION damp_cond, spring_cond;
+static DIEFFECT eff_const, eff_damper, eff_spring;
+static char chosen[MAX_PATH] = "";
+static char last_problem[300] = "";
+
+static DIDEVICEINSTANCEA ff_found[8];
+static int ff_nfound;
+static BOOL CALLBACK on_ff_device(LPCDIDEVICEINSTANCEA d, LPVOID ctx) {
+	(void)ctx;
+	if (ff_nfound < 8) ff_found[ff_nfound++] = *d;
+	return DIENUM_CONTINUE;
 }
 
-/* Opens the joystick the controls are read from: the FFB wheel, else the
- * first wheel-looking joystick (wheels without force feedback still drive). */
+static void init_effect(DIEFFECT *e, void *params, DWORD size) {
+	memset(e, 0, sizeof(*e));
+	e->dwSize = sizeof(DIEFFECT);
+	e->dwFlags = DIEFF_CARTESIAN | DIEFF_OBJECTOFFSETS;
+	e->dwDuration = INFINITE;
+	e->dwGain = DI_FFNOMINALMAX;
+	e->dwTriggerButton = DIEB_NOTRIGGER;
+	e->cAxes = 1;
+	e->rgdwAxes = ff_axis;
+	e->rglDirection = ff_dir;
+	e->cbTypeSpecificParams = size;
+	e->lpvTypeSpecificParams = params;
+}
+
+static void ff_release(void) {
+	LPDIRECTINPUTEFFECT *all[3] = {&fx_const, &fx_damper, &fx_spring};
+	for (int i = 0; i < 3; i++)
+		if (*all[i]) { (*all[i])->lpVtbl->Stop(*all[i]); (*all[i])->lpVtbl->Release(*all[i]); *all[i] = NULL; }
+	if (ff_dev) { ff_dev->lpVtbl->Unacquire(ff_dev); ff_dev->lpVtbl->Release(ff_dev); ff_dev = NULL; }
+}
+
+/* Opens the first force-feedback wheel (wheel-looking names first). */
+static int find_ffb(void) {
+	if (!di) return 0;
+	ff_nfound = 0;
+	di->lpVtbl->EnumDevices(di, DI8DEVCLASS_GAMECTRL, on_ff_device, NULL, DIEDFL_ATTACHEDONLY | DIEDFL_FORCEFEEDBACK);
+	logmsg("scan: %d DirectInput force-feedback device(s)", ff_nfound);
+	for (int pass = 0; pass < 2 && !fx_const; pass++) {
+		for (int i = 0; i < ff_nfound && !fx_const; i++) {
+			const char *name = ff_found[i].tszProductName;
+			if (pass == 0) logmsg("  [%d] %s", i, name);
+			if ((pass == 0) != (wheelish(name) != 0)) continue;
+			HRESULT hr = di->lpVtbl->CreateDevice(di, &ff_found[i].guidInstance, &ff_dev, NULL);
+			if (FAILED(hr)) { snprintf(last_problem, sizeof(last_problem), "can't open %s (0x%08lx)", name, (unsigned long)hr); continue; }
+			ff_dev->lpVtbl->SetDataFormat(ff_dev, &c_dfDIJoystick2);
+			hr = ff_dev->lpVtbl->SetCooperativeLevel(ff_dev, ff_window, DISCL_EXCLUSIVE | DISCL_BACKGROUND);
+			if (FAILED(hr)) logmsg("  SetCooperativeLevel: 0x%08lx", (unsigned long)hr);
+			DIPROPDWORD ac = {{sizeof(DIPROPDWORD), sizeof(DIPROPHEADER), 0, DIPH_DEVICE}, DIPROPAUTOCENTER_OFF};
+			ff_dev->lpVtbl->SetProperty(ff_dev, DIPROP_AUTOCENTER, &ac.diph);
+			hr = ff_dev->lpVtbl->Acquire(ff_dev);
+			if (FAILED(hr)) {
+				snprintf(last_problem, sizeof(last_problem), "%s is in use by another program (0x%08lx)", name, (unsigned long)hr);
+				logmsg("%s", last_problem);
+				ff_release();
+				continue;
+			}
+			ff_axis[0] = DIJOFS_X;
+			memset(&cf, 0, sizeof(cf));
+			init_effect(&eff_const, &cf, sizeof(cf));
+			hr = ff_dev->lpVtbl->CreateEffect(ff_dev, &GUID_ConstantForce, &eff_const, &fx_const, NULL);
+			if (FAILED(hr)) {
+				fx_const = NULL;
+				snprintf(last_problem, sizeof(last_problem), "%s refused the steering force (0x%08lx)", name, (unsigned long)hr);
+				logmsg("%s", last_problem);
+				ff_release();
+				continue;
+			}
+			fx_const->lpVtbl->Start(fx_const, 1, 0);
+			memset(&damp_cond, 0, sizeof(damp_cond));
+			damp_cond.dwPositiveSaturation = damp_cond.dwNegativeSaturation = DI_FFNOMINALMAX;
+			init_effect(&eff_damper, &damp_cond, sizeof(damp_cond));
+			if (FAILED(ff_dev->lpVtbl->CreateEffect(ff_dev, &GUID_Damper, &eff_damper, &fx_damper, NULL))) fx_damper = NULL;
+			else fx_damper->lpVtbl->Start(fx_damper, 1, 0);
+			spring_cond = damp_cond;
+			init_effect(&eff_spring, &spring_cond, sizeof(spring_cond));
+			if (FAILED(ff_dev->lpVtbl->CreateEffect(ff_dev, &GUID_Spring, &eff_spring, &fx_spring, NULL))) fx_spring = NULL;
+			else fx_spring->lpVtbl->Start(fx_spring, 1, 0);
+			snprintf(chosen, sizeof(chosen), "%s", name);
+			last_problem[0] = 0;
+			logmsg("force feedback on %s (damper %s, spring %s)", name, fx_damper ? "yes" : "no", fx_spring ? "yes" : "no");
+		}
+	}
+	return fx_const != NULL;
+}
+
+static float shown_force = 0, shown_damper = -1, shown_spring = -1;
+
+/* After a lost device (another app grabbed it, sleep, unplug): re-acquire and restart. */
+static void ff_recover(HRESULT hr) {
+	if (hr != DIERR_INPUTLOST && hr != DIERR_NOTACQUIRED && hr != DIERR_NOTEXCLUSIVEACQUIRED) return;
+	if (SUCCEEDED(ff_dev->lpVtbl->Acquire(ff_dev))) {
+		LPDIRECTINPUTEFFECT all[3] = {fx_const, fx_damper, fx_spring};
+		for (int i = 0; i < 3; i++)
+			if (all[i]) all[i]->lpVtbl->Start(all[i], 1, 0);
+		shown_force = 0; shown_damper = shown_spring = -1;
+	}
+}
+
+static void ff_apply(float f, float d, float s) {
+	if (!fx_const) return;
+	if (SDL_fabsf(f - shown_force) > 0.002f) {
+		cf.lMagnitude = (LONG)(SDL_clamp(f, -1.0f, 1.0f) * DI_FFNOMINALMAX);
+		HRESULT hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, DIEP_TYPESPECIFICPARAMS);
+		if (FAILED(hr)) ff_recover(hr);
+		else shown_force = f;
+	}
+	if (fx_damper && SDL_fabsf(d - shown_damper) > 0.01f) {
+		damp_cond.lPositiveCoefficient = damp_cond.lNegativeCoefficient = (LONG)(SDL_clamp(d, 0.0f, 1.0f) * DI_FFNOMINALMAX);
+		if (SUCCEEDED(fx_damper->lpVtbl->SetParameters(fx_damper, &eff_damper, DIEP_TYPESPECIFICPARAMS))) shown_damper = d;
+	}
+	if (fx_spring && SDL_fabsf(s - shown_spring) > 0.01f) {
+		spring_cond.lPositiveCoefficient = spring_cond.lNegativeCoefficient = (LONG)(SDL_clamp(s, 0.0f, 1.0f) * DI_FFNOMINALMAX);
+		if (SUCCEEDED(fx_spring->lpVtbl->SetParameters(fx_spring, &eff_spring, DIEP_TYPESPECIFICPARAMS))) shown_spring = s;
+	}
+}
+
+/* --- Controls (SDL) --------------------------------------------------------- */
+
+static SDL_Joystick *wheel_js = NULL;
+
+/* Opens the first wheel-looking joystick (wheels without force feedback still drive). */
 static void open_input(void) {
 	if (wheel_js) return;
 	int jn = 0;
 	SDL_JoystickID *js = SDL_GetJoysticks(&jn);
-	for (int pass = 0; pass < 2 && !wheel_js; pass++) {
-		for (int i = 0; i < jn && !wheel_js; i++) {
-			const char *name = SDL_GetJoystickNameForID(js[i]);
-			int match = pass == 0 ? (chosen[0] && name && strcmp(name, chosen) == 0) : wheelish(name);
-			if (match) wheel_js = SDL_OpenJoystick(js[i]);
-		}
-	}
+	for (int i = 0; i < jn && !wheel_js; i++)
+		if (wheelish(SDL_GetJoystickNameForID(js[i]))) wheel_js = SDL_OpenJoystick(js[i]);
 	SDL_free(js);
 	if (wheel_js) logmsg("controls from: %s (%d axes, %d buttons)", SDL_GetJoystickName(wheel_js),
 		SDL_GetNumJoystickAxes(wheel_js), SDL_GetNumJoystickButtons(wheel_js));
@@ -187,76 +260,6 @@ static void send_input(void) {
 	sendto(sock_out, (const char *)buf, o, 0, (struct sockaddr *)&out_addr, sizeof(out_addr));
 }
 
-/* Looks for a force-feedback wheel: first the haptic device list, then
- * joysticks that report haptics. Returns 1 when a wheel is ready. */
-static int find_wheel(void) {
-	int count = 0;
-	SDL_HapticID *ids = SDL_GetHaptics(&count);
-	logmsg("scan: %d haptic device(s)", count);
-	for (int pass = 0; pass < 2 && !haptic; pass++) {
-		for (int i = 0; i < count && !haptic; i++) {
-			const char *name = SDL_GetHapticNameForID(ids[i]);
-			if (pass == 0) logmsg("  haptic %d: %s", i, name ? name : "(null)");
-			if (pass == 0 && !wheelish(name)) continue;
-			SDL_Haptic *h = SDL_OpenHaptic(ids[i]);
-			if (!h) {
-				snprintf(last_problem, sizeof(last_problem), "can't open %s: %s (another app may be using the wheel's force feedback)", name ? name : "wheel", SDL_GetError());
-				logmsg("%s", last_problem);
-				continue;
-			}
-			/* Keep the first device whose effects actually start: a wheel can
-			 * show up several times (G HUB adds its own entries). */
-			if (SDL_GetHapticFeatures(h) & SDL_HAPTIC_CONSTANT) {
-				haptic = h;
-				if (setup_effects()) {
-					snprintf(chosen, sizeof(chosen), "%s", name ? name : "wheel");
-					logmsg("using haptic %d: %s", i, name ? name : "(null)");
-				} else {
-					SDL_CloseHaptic(h);
-					haptic = NULL;
-				}
-			} else {
-				SDL_CloseHaptic(h);
-			}
-		}
-	}
-	SDL_free(ids);
-	if (!haptic) {
-		int jn = 0;
-		SDL_JoystickID *js = SDL_GetJoysticks(&jn);
-		logmsg("scan: %d joystick(s)", jn);
-		for (int i = 0; i < jn && !haptic; i++) {
-			SDL_Joystick *j = SDL_OpenJoystick(js[i]);
-			if (!j) continue;
-			const char *name = SDL_GetJoystickName(j);
-			int is_h = SDL_IsJoystickHaptic(j);
-			logmsg("  joystick %d: %s haptic=%d", i, name ? name : "(null)", is_h);
-			if (is_h) {
-				SDL_Haptic *h = SDL_OpenHapticFromJoystick(j);
-				if (h && (SDL_GetHapticFeatures(h) & SDL_HAPTIC_CONSTANT)) {
-					haptic = h;
-					if (setup_effects()) {
-						snprintf(chosen, sizeof(chosen), "%s", name ? name : "wheel");
-					} else {
-						SDL_CloseHaptic(h);
-						haptic = NULL;
-					}
-				} else if (h) {
-					SDL_CloseHaptic(h);
-				} else {
-					snprintf(last_problem, sizeof(last_problem), "can't open %s for FFB: %s", name ? name : "wheel", SDL_GetError());
-					logmsg("%s", last_problem);
-				}
-			}
-			if (haptic) wheel_js = j;
-			else SDL_CloseJoystick(j);
-		}
-		SDL_free(js);
-	}
-	open_input();
-	return haptic != NULL;
-}
-
 int main(int argc, char **argv) {
 	DWORD parent_pid = 0;
 	for (int i = 1; i < argc - 1; i++)
@@ -268,7 +271,7 @@ int main(int argc, char **argv) {
 		strcat(logpath, "DriftLab_ffb.log");
 		log_file = fopen(logpath, "w");
 	}
-	logmsg("Drift Lab FFB helper, SDL %d.%d.%d, parent pid %lu", SDL_VERSIONNUM_MAJOR(SDL_GetVersion()),
+	logmsg("Drift Lab wheel helper (DirectInput FFB, SDL %d.%d.%d input), parent pid %lu", SDL_VERSIONNUM_MAJOR(SDL_GetVersion()),
 		SDL_VERSIONNUM_MINOR(SDL_GetVersion()), SDL_VERSIONNUM_MICRO(SDL_GetVersion()), (unsigned long)parent_pid);
 
 	WSADATA wsa;
@@ -288,24 +291,35 @@ int main(int argc, char **argv) {
 	u_long nonblock = 1;
 	ioctlsocket(sock_in, FIONBIO, &nonblock);
 
-	/* Use DirectInput for wheels (needed for force feedback). */
-	SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "0");
-	/* The helper's console never has focus; read the wheel anyway. */
-	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-	if (!SDL_Init(SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK)) {
-		send_status("FFB helper: SDL init failed: %s", SDL_GetError());
-		return 1;
+	/* DirectInput's exclusive mode needs a top-level window; it never shows. */
+	HINSTANCE inst = GetModuleHandle(NULL);
+	WNDCLASSA wc = {0};
+	wc.lpfnWndProc = DefWindowProcA;
+	wc.hInstance = inst;
+	wc.lpszClassName = "DriftLabFfb";
+	RegisterClassA(&wc);
+	ff_window = CreateWindowA("DriftLabFfb", "Drift Lab FFB", WS_OVERLAPPEDWINDOW, 0, 0, 64, 64, NULL, NULL, inst, NULL);
+	if (FAILED(DirectInput8Create(inst, DIRECTINPUT_VERSION, &IID_IDirectInput8A, (void **)&di, NULL))) {
+		di = NULL;
+		snprintf(last_problem, sizeof(last_problem), "DirectInput unavailable");
 	}
 
-	find_wheel();
+	/* Controls through SDL, in the background (our window never has focus). */
+	SDL_SetHint(SDL_HINT_JOYSTICK_RAWINPUT, "0");
+	SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+	if (!SDL_Init(SDL_INIT_JOYSTICK)) logmsg("SDL init failed: %s", SDL_GetError());
+
+	find_ffb();
+	open_input();
 	Uint64 last_scan = SDL_GetTicks();
 	float force = 0, damper = 0, spring = 0, gain = 1;
-	float shown_force = 0, shown_damper = -1, shown_spring = -1;
 	Uint64 last_force = 0;
 	Uint64 test_until = 0;
 	Uint64 last_status = 0;
 	int running = 1;
 	while (running) {
+		MSG msg;
+		while (PeekMessageA(&msg, NULL, 0, 0, PM_REMOVE)) DispatchMessageA(&msg);
 		char buf[256];
 		int n;
 		while ((n = recv(sock_in, buf, sizeof(buf), 0)) >= 4) {
@@ -319,21 +333,20 @@ int main(int argc, char **argv) {
 				running = 0;
 			} else if (memcmp(buf, "DLTS", 4) == 0) {
 				test_until = SDL_GetTicks() + 1600;
-			} else if (memcmp(buf, "DLHI", 4) == 0) {
-				/* keep-alive from the game */
+				logmsg("test requested");
 			}
 		}
 		Uint64 now = SDL_GetTicks();
 		if (parent && WaitForSingleObject(parent, 0) == WAIT_OBJECT_0) running = 0;
 		send_input();
-		if ((!haptic || !wheel_js) && now - last_scan > 3000) {
+		if ((!fx_const || !wheel_js) && now - last_scan > 3000) {
 			last_scan = now;
-			if (!haptic) find_wheel();
-			else open_input();
+			if (!fx_const) find_ffb();
+			if (!wheel_js) open_input();
 		}
 		if (now - last_status > 1000) {
 			last_status = now;
-			if (haptic) send_status("FFB ready: %s", chosen);
+			if (fx_const) send_status("FFB ready: %s", chosen);
 			else if (last_problem[0]) send_status("FFB problem: %s", last_problem);
 			else send_status("No force-feedback wheel found yet (is G HUB running and the wheel plugged in?)");
 		}
@@ -344,36 +357,17 @@ int main(int argc, char **argv) {
 			f = (left > 800) ? -0.45f : 0.45f;
 			d = 0.1f;
 			s = 0;
+		} else {
+			if (gain < 0) gain = 0;
+			if (gain > 1.5f) gain = 1.5f;
+			f *= gain;
 		}
-		if (gain < 0) gain = 0;
-		if (gain > 1.5f) gain = 1.5f;
-		f *= gain;
-		if (haptic) {
-			if (eff_const >= 0 && SDL_fabsf(f - shown_force) > 0.002f) {
-				ce.constant.level = to_level(f);
-				SDL_UpdateHapticEffect(haptic, eff_const, &ce);
-				shown_force = f;
-			}
-			if (eff_damper >= 0 && SDL_fabsf(d - shown_damper) > 0.01f) {
-				Uint16 c = (Uint16)(SDL_clamp(d, 0.0f, 1.0f) * 32767.0f);
-				for (int a = 0; a < 3; a++) { de.condition.right_coeff[a] = c; de.condition.left_coeff[a] = c; }
-				SDL_UpdateHapticEffect(haptic, eff_damper, &de);
-				shown_damper = d;
-			}
-			if (eff_spring >= 0 && SDL_fabsf(s - shown_spring) > 0.01f) {
-				Uint16 c = (Uint16)(SDL_clamp(s, 0.0f, 1.0f) * 32767.0f);
-				for (int a = 0; a < 3; a++) { se.condition.right_coeff[a] = c; se.condition.left_coeff[a] = c; }
-				SDL_UpdateHapticEffect(haptic, eff_spring, &se);
-				shown_spring = s;
-			}
-		}
+		ff_apply(f, d, s);
 		SDL_Delay(2);
 	}
+	ff_release();
+	if (di) di->lpVtbl->Release(di);
 	if (wheel_js) SDL_CloseJoystick(wheel_js);
-	if (haptic) {
-		SDL_StopHapticEffects(haptic);
-		SDL_CloseHaptic(haptic);
-	}
 	SDL_Quit();
 	closesocket(sock_in);
 	closesocket(sock_out);

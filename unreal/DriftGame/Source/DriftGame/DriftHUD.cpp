@@ -42,7 +42,7 @@ void ADriftHUD::DrawHUD()
 	const double Angle = FMath::Abs(V->DriftAngleDeg());
 	if (Angle > 5.0 && V->Speed() > 5.0)
 	{
-		DrawText(FString::Printf(TEXT("%dÂ°"), FMath::RoundToInt(Angle)), FLinearColor(1.f, 0.75f, 0.2f), Canvas->ClipX * 0.5f - 40.f, 60.f, Big, 2.2f);
+		DrawText(FString::Printf(TEXT("%d\u00B0"), FMath::RoundToInt(Angle)), FLinearColor(1.f, 0.75f, 0.2f), Canvas->ClipX * 0.5f - 40.f, 60.f, Big, 2.2f);
 	}
 	DrawText(Car->GetCarName(), Dim, X, Y + 100.f, Small, 1.2f);
 	DrawText(TEXT("A/Space handbrake  B/E up  X/Q down  Y/C camera (chase/cockpit/hood)  View/R reset  RS/M auto-manual  T wheel FFB test"), Dim, X, Y + 125.f, Small, 1.0f);
@@ -57,10 +57,15 @@ void ADriftHUD::DrawHUD()
 				Held += FString::Printf(TEXT(" %d"), B);
 			}
 		}
-		const FString Line = W->HasControls()
-			? FString::Printf(TEXT("%s  |  wheel %.0f°%s"), *W->Status(), W->Axis(W->Map.SteerAxis) * W->Map.RotationDeg * 0.5f,
-				Held.IsEmpty() ? TEXT("") : *FString::Printf(TEXT("  |  buttons:%s"), *Held))
-			: W->Status();
-		DrawText(Line, Dim, X, 24.f, Small, 1.1f);
+		// What the game reads from the wheel - for checking pedals and button numbers.
+		if (W->HasControls())
+		{
+			DrawText(FString::Printf(TEXT("wheel %+.0f\u00B0   throttle %d%%   brake %d%%   clutch %d%%%s   buttons:%s"),
+				W->Axis(W->Map.SteerAxis) * W->Map.RotationDeg * 0.5f,
+				FMath::RoundToInt(V->in.throttle * 100.0), FMath::RoundToInt(V->in.brake * 100.0), FMath::RoundToInt(V->in.clutch * 100.0),
+				V->in.auto_clutch ? TEXT(" (auto)") : TEXT(""), Held.IsEmpty() ? TEXT(" none") : *Held),
+				White, X, 52.f, Small, 1.6f);
+		}
+		DrawText(W->Status(), White, X, 24.f, Small, 1.6f);
 	}
 }

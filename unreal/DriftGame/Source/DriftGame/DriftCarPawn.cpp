@@ -428,13 +428,13 @@ bool ADriftCarPawn::ReadWheel()
 	if (Wheel->Pressed(M.Reset)) OnReset();
 	if (M.FirstGearButton >= 0)
 	{
-		// H-shifter: 1..6 then R; out of gear = neutral once it's been used.
-		int32 Gear = -2;
-		for (int32 K = 0; K < 7; ++K)
+		// H-shifter: out of gear = neutral once it's been used.
+		int32 Gear = Wheel->Button(M.ReverseButton) ? -1 : -2;
+		for (int32 K = 0; K < 6; ++K)
 		{
 			if (Wheel->Button(M.FirstGearButton + K))
 			{
-				Gear = K < 6 ? K + 1 : -1;
+				Gear = K + 1;
 			}
 		}
 		if (Gear != -2)

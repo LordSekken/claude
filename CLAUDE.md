@@ -43,11 +43,15 @@ vite files) is an unrelated web app.
   `...\DriftGame 5.5\test ars\bdc_streetspec_miata_v4` (data unpacked into its data/). glTF import is a
   +90 deg yaw off DriftUE (fixed on the car meshes). AC STEER_RATIO is signed - use its magnitude.
 - G920 (Xbox version): ffb_helper.exe (built locally with MSVC + SDL3 3.2.8 VC package into
-  Binaries/Win64 - not in git) streams "DLIN" controls and runs FFB; the game starts/stops it. G HUB
-  lists the wheel 3x and only the 3rd accepts effects (SDL_HAPTIC_STEERING_AXIS). Mapping:
-  Config/DefaultGame.ini [DriftWheel]. Cameras chase/cockpit/hood (C or Y). T = FFB test.
-- Not yet confirmed by the owner: FFB direction (T must pull left first, else FfbInvert=True), G920
-  button numbers (HUD top line shows held buttons), steering weight.
+  Binaries/Win64 - not in git) streams "DLIN" controls (SDL) and runs FFB through raw DirectInput:
+  SDL haptics never moved the G920; Logitech's driver only accepts a 1-axis cartesian effect on
+  DIJOFS_X with direction +1. The game starts/stops the helper. Mapping: Config/DefaultGame.ini
+  [DriftWheel] (G920 Xbox: A=0 handbrake, X=2 reset, shifter R=11, gears 1-6 = 12-17). Cameras
+  chase/cockpit/hood (C or Y). T = FFB test. HUD top lines show wheel/pedal/button readout.
+- Not yet confirmed by the owner: that FFB is felt and its direction (T must pull left first, else
+  FfbInvert=True), steering weight, odd RPM/clutch behaviour they reported (check pedal readout).
+- Headless UE runs fail with DXGI 887A002B (access denied) when the owner's display is off/away:
+  add -RenderOffscreen.
 - Headless UE testing: `UnrealEditor.exe <uproject> -ExecCmds="py <script>"` (not -ExecutePythonScript,
   which quits) with a slate post-tick callback driving PIE; HighResShot for screenshots. Compiling
   needs the owner's editor closed (Live Coding blocks UBT).
