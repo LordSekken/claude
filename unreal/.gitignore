@@ -11,3 +11,8 @@ DriftGame/Content/Maps/
 DriftGame/Content/DriftMaterials/
 DriftGame/Tracks/*/
 __pycache__/
+# Assetto Corsa cars exported by Drift Lab (the car author's meshes/textures/physics)
+DriftGame/Cars/
+DriftGame/Content/Cars/
+DriftGame/Content/DriftData/Cars/ac_*.json
+DriftGame/Content/DriftData/SelectedCar.txt

@@ -52,6 +52,14 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Drift")
 	TArray<TObjectPtr<UStaticMeshComponent>> WheelMeshes;
 
+	/** Hub/brake parts of an imported car model: steer with the wheel, don't spin. */
+	UPROPERTY(VisibleAnywhere, Category = "Drift")
+	TArray<TObjectPtr<UStaticMeshComponent>> SuspMeshes;
+
+	/** Steering wheel of an imported car model (pivot at its hub). */
+	UPROPERTY(VisibleAnywhere, Category = "Drift")
+	TObjectPtr<UStaticMeshComponent> SteerMesh;
+
 	UPROPERTY(VisibleAnywhere, Category = "Drift")
 	TObjectPtr<USpringArmComponent> ChaseArm;
 
@@ -70,6 +78,7 @@ protected:
 
 private:
 	void LoadSpec();
+	bool LoadModel(const FString& ModelId);
 	void ResetCar(const FVector& Location, float Yaw);
 	void CreateInput();
 	void ReadInput(float DeltaSeconds);
@@ -85,6 +94,11 @@ private:
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
 	FString CarName;
 	bool bCockpit = false;
+	bool bHasModel = false;           // real car meshes instead of the box
+	FQuat WheelMeshBase = FQuat::Identity;
+	FQuat ModelBase = FQuat::Identity;    // imported mesh frame -> DriftUE frame
+	FVector SteerAxis = FVector::ForwardVector;   // Unreal frame, through the steering wheel hub
+	double SteerRatio = 8.0;          // steering wheel turns per road-wheel turn
 	FRotator ChaseRotation = FRotator::ZeroRotator;
 	FVector LastOnRoad = FVector::ZeroVector;
 	float LastOnRoadYaw = 0.f;

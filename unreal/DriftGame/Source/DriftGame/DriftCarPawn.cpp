@@ -60,9 +60,18 @@ ADriftCarPawn::ADriftCarPawn()
 		}
 		// Engine cylinder: 1 m tall along Z, 1 m across. Roll it onto its side.
 		Wheel->SetRelativeRotation(FRotator(0.f, 0.f, 90.f));
+		UStaticMeshComponent* Susp = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("%sSusp"), WheelNames[I]));
+		Susp->SetupAttachment(Hub);
+		Susp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		WheelHubs.Add(Hub);
 		WheelMeshes.Add(Wheel);
+		SuspMeshes.Add(Susp);
 	}
+	WheelMeshBase = FRotator(0.f, 0.f, 90.f).Quaternion();
+
+	SteerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SteeringWheel"));
+	SteerMesh->SetupAttachment(Root);
+	SteerMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	ChaseArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("ChaseArm"));
 	ChaseArm->SetupAttachment(Root);
@@ -98,6 +107,17 @@ void ADriftCarPawn::LoadSpec()
 {
 	drift::CarSpec Spec;
 	FLinearColor Paint(0.55f, 0.55f, 0.58f);
+	FString ModelId;
+	// Scripts/build_car.py picks the car to drive (an imported AC car).
+	FString Selected;
+	if (FFileHelper::LoadFileToString(Selected, *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("DriftData/SelectedCar.txt"))))
+	{
+		Selected.TrimStartAndEndInline();
+		if (!Selected.IsEmpty())
+		{
+			CarSpec = Selected;
+		}
+	}
 	const FString Path = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("DriftData/Cars"), CarSpec + TEXT(".json"));
 	FString Text;
 	if (FFileHelper::LoadFileToString(Text, *Path))
@@ -111,6 +131,19 @@ void ADriftCarPawn::LoadSpec()
 			const drift::JsonValue& S = Json.Has("spec") ? Json["spec"] : Json;
 			const FString Hex = UTF8_TO_TCHAR(S.Str("color", "#8c8c94").c_str());
 			Paint = FLinearColor(FColor::FromHex(Hex));
+			if (S.Has("model"))
+			{
+				const drift::JsonValue& M = S["model"];
+				ModelId = UTF8_TO_TCHAR(M.Str("id", "").c_str());
+				SteerRatio = M.Num("steer_ratio", 8.0);
+				const drift::JsonValue& P = M["steer_pivot"];
+				const drift::JsonValue& A = M["steer_axis"];
+				if (M.Bool("has_steer", false) && P.IsArray() && P.arr.size() == 3 && A.IsArray() && A.arr.size() == 3)
+				{
+					SteerMesh->SetRelativeLocation(DriftUE::Pos(drift::Vec3(P.arr[0].num, P.arr[1].num, P.arr[2].num)));
+					SteerAxis = DriftUE::Dir(drift::Vec3(A.arr[0].num, A.arr[1].num, A.arr[2].num)).GetSafeNormal();
+				}
+			}
 		}
 		else
 		{
@@ -123,6 +156,12 @@ void ADriftCarPawn::LoadSpec()
 	}
 	CarName = UTF8_TO_TCHAR(Spec.name.c_str());
 	Vehicle = std::make_unique<drift::Vehicle>(Spec);
+	CockpitCamera->SetRelativeLocation(DriftUE::Pos(Vehicle->SeatLocal()));
+	bHasModel = !ModelId.IsEmpty() && LoadModel(ModelId);
+	if (bHasModel)
+	{
+		return;
+	}
 
 	// Size the placeholder body and wheels to the spec.
 	const drift::Vec3 Half = Vehicle->CollisionHalfExtents();
@@ -141,7 +180,41 @@ void ADriftCarPawn::LoadSpec()
 			Mid->SetVectorParameterValue(TEXT("Color"), FLinearColor(0.03f, 0.03f, 0.03f));
 		}
 	}
-	CockpitCamera->SetRelativeLocation(DriftUE::Pos(Vehicle->SeatLocal()));
+}
+
+bool ADriftCarPawn::LoadModel(const FString& ModelId)
+{
+	// Meshes from Scripts/build_car.py, already in DriftCore's body frame
+	// (wheel parts centred on the wheel, the steering wheel on its hub).
+	auto Part = [&ModelId](const TCHAR* Name) {
+		return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Game/Cars/%s/%s.%s"), *ModelId, Name, Name));
+	};
+	UStaticMesh* BodyMesh = Part(TEXT("BODY"));
+	if (!BodyMesh)
+	{
+		UE_LOG(LogDrift, Warning, TEXT("Car model /Game/Cars/%s not imported - run Scripts/build_car.py. Using the box."), *ModelId);
+		return false;
+	}
+	// Unreal's glTF import maps (x, y, z) to (x, z, y); DriftUE expects
+	// (-z, x, y). The two differ by a +90 deg yaw (no mirroring).
+	const FQuat ImportFix = FRotator(0.f, 90.f, 0.f).Quaternion();
+	Body->SetStaticMesh(BodyMesh);
+	Body->SetRelativeLocation(FVector::ZeroVector);
+	Body->SetRelativeRotation(ImportFix);
+	Body->SetRelativeScale3D(FVector::OneVector);
+	ModelBase = ImportFix;
+	static const TCHAR* Wheels[4] = {TEXT("LF"), TEXT("RF"), TEXT("LR"), TEXT("RR")};
+	for (int32 I = 0; I < 4; ++I)
+	{
+		WheelMeshes[I]->SetStaticMesh(Part(*FString::Printf(TEXT("WHEEL_%s"), Wheels[I])));
+		WheelMeshes[I]->SetRelativeScale3D(FVector::OneVector);
+		SuspMeshes[I]->SetStaticMesh(Part(*FString::Printf(TEXT("SUSP_%s"), Wheels[I])));
+		SuspMeshes[I]->SetRelativeRotation(ImportFix);
+	}
+	WheelMeshBase = ImportFix;
+	SteerMesh->SetStaticMesh(Part(TEXT("STEER")));
+	UE_LOG(LogDrift, Log, TEXT("Using car model /Game/Cars/%s"), *ModelId);
+	return true;
 }
 
 void ADriftCarPawn::ResetCar(const FVector& Location, float Yaw)
@@ -305,9 +378,17 @@ void ADriftCarPawn::SyncVisuals(float DeltaSeconds)
 	{
 		const drift::WheelState& W = Vehicle->Wheel(I);
 		WheelHubs[I]->SetRelativeLocation(DriftUE::Pos(Vehicle->WheelCenterLocal(I)));
-		// Unreal yaw + = turn right (same as DriftCore steer); rolling forward
-		// is negative pitch.
-		WheelHubs[I]->SetRelativeRotation(FRotator(-FMath::RadiansToDegrees(W.spin), FMath::RadiansToDegrees(W.steer), 0.0));
+		// Hub steers (Unreal yaw + = turn right, same as DriftCore), the wheel
+		// spins inside it (rolling forward is negative pitch).
+		WheelHubs[I]->SetRelativeRotation(FRotator(0.0, FMath::RadiansToDegrees(W.steer), 0.0));
+		WheelMeshes[I]->SetRelativeRotation(FRotator(-FMath::RadiansToDegrees(W.spin), 0.0, 0.0).Quaternion() * WheelMeshBase);
+	}
+	if (bHasModel)
+	{
+		// Same as Drift Lab: turn about the column by steer x ratio. The axis map
+		// is a reflection, so the angle flips sign in Unreal's frame.
+		const double Steer = (Vehicle->Wheel(0).steer + Vehicle->Wheel(1).steer) * 0.5;
+		SteerMesh->SetRelativeRotation(FQuat(SteerAxis, -Steer * SteerRatio) * ModelBase);
 	}
 	// Chase camera: swings toward the direction of travel, so you see where
 	// the car is going while it's sideways.
@@ -347,8 +428,9 @@ void ADriftCarPawn::OnToggleCamera()
 	bCockpit = !bCockpit;
 	ChaseCamera->SetActive(!bCockpit);
 	CockpitCamera->SetActive(bCockpit);
-	// The placeholder body is a solid box - hide it from inside.
-	Body->SetVisibility(!bCockpit);
+	// The placeholder body is a solid box - hide it from inside. A real model
+	// has its interior.
+	Body->SetVisibility(!bCockpit || bHasModel);
 }
 
 void ADriftCarPawn::OnReset()
