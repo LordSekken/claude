@@ -441,7 +441,8 @@ bool ADriftCarPawn::ReadWheel()
 		{
 			bShifterUsed = true;
 			bAutoShift = false;
-			Vehicle->SetGear(Gear);
+			// A gate the car doesn't have (6th on a 5-speed) is neutral.
+			Vehicle->SetGear(Gear > Vehicle->GearCount() ? 0 : Gear);
 		}
 		else if (bShifterUsed)
 		{

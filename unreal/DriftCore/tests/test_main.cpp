@@ -339,6 +339,48 @@ void TestFfbParked() {
 	CHECK(v.FfbSpring() > 0.3, "parked spring %g", v.FfbSpring());
 }
 
+void TestFfbDriftSelfSteer() {
+	// Sliding with the wheel held straight, the rim pulls firmly toward countersteer.
+	FlatWorld w;
+	Vehicle v = Settled(TestCar(), w);
+	v.in.throttle = 0.5;
+	v.in.direct_steer = true;
+	Run(3.0, v, w);
+	if (v.Gear() == 1) v.ShiftUp();
+	Run(1.0, v, w);
+	v.in.steer = 0.8;
+	v.in.handbrake = 1.0;
+	v.in.throttle = 1.0;
+	Run(0.4, v, w);
+	v.in.handbrake = 0.0;
+	v.in.steer = -0.3;
+	Run(0.6, v, w);
+	v.in.steer = 0.0;
+	double weakest = 1.0;
+	int samples = 0;
+	Run(1.2, v, w, [&](double) {
+		if (std::fabs(v.DriftAngleDeg()) < 10.0) return;
+		++samples;
+		// +drift: velocity right of the nose, so countersteer is to the right (+).
+		weakest = std::fmin(weakest, v.FfbForce() * (v.DriftAngleDeg() > 0 ? 1.0 : -1.0));
+	});
+	CHECK(samples > 30, "got sideways (%d samples past 10 deg)", samples);
+	CHECK(weakest > 0.4, "pulls into countersteer while sliding: weakest %g", weakest);
+}
+
+void TestStallRestart() {
+	FlatWorld w;
+	Vehicle v = Settled(TestCar(), w);
+	v.in.auto_clutch = false;
+	v.in.clutch = 0.0;   // in gear, clutch out, brakes on: stalls
+	v.in.brake = 1.0;
+	Run(2.0, v, w);
+	CHECK(v.Rpm() < 200.0, "stalled: %g rpm", v.Rpm());
+	v.in.clutch = 1.0;   // clutch in: the starter brings it back
+	Run(1.0, v, w);
+	CHECK(v.Rpm() > v.Spec().idle_rpm * 0.8, "restarted: %g rpm", v.Rpm());
+}
+
 void TestSetGear() {
 	Vehicle v(TestCar());
 	v.SetGear(3);
@@ -393,6 +435,8 @@ int main() {
 		{"frame rate", TestFrameRateIndependent},
 		{"ffb direction", TestFfbDirection},
 		{"ffb parked", TestFfbParked},
+		{"ffb drift self-steer", TestFfbDriftSelfSteer},
+		{"stall restart", TestStallRestart},
 		{"set gear", TestSetGear},
 		{"example specs", TestExampleSpecs},
 	};

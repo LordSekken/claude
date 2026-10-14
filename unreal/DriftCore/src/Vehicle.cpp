@@ -445,6 +445,13 @@ void Vehicle::UpdateDrivetrain(double dt) {
 		if (launch < engage) engage = launch;
 	}
 	if (gear_ == 0 || shift_timer_ > 0.0) engage = 0.0;
+	// Starter: a stalled engine cranks back to idle once it's declutched (clutch
+	// in, neutral, or auto clutch). Idle throttle alone makes almost no torque
+	// near 0 rpm, so it used to take ages to come back.
+	if (rpm_now < idle * 0.5 && engage < 0.1) {
+		const double idle_w = idle * kTau / 60.0;
+		engine_omega_ += (idle_w - engine_omega_) * Clamp(dt / 0.3, 0.0, 1.0);
+	}
 
 	const double ie = spec_.engine_inertia;
 	const bool front_driven = spec_.layout != Layout::RWD;
@@ -509,7 +516,10 @@ void Vehicle::ComputeFfb(double dt) {
 		const double peak = wh.tire.Params().peak_slip_angle;
 		double pneumatic = 0.035 * (1.0 - std::fabs(wh.slip_angle) / (peak * 1.7));
 		if (pneumatic < 0.0) pneumatic = 0.0;
-		torque += -wh.fy * (pneumatic + 0.022);
+		// Mechanical trail (caster) keeps pulling the wheel toward the direction of
+		// travel after the tyre is past its peak - what spins the rim into
+		// countersteer in a drift. Drift cars run lots of caster: ~4 cm.
+		torque += -wh.fy * (pneumatic + 0.04);
 		if (wh.surface == Surface::Kerb) {
 			rumble += std::sin(ffb_time_ * kTau * 22.0) * 0.12 * Clamp(speed / 15.0, 0.0, 1.0);
 		} else if (!GetSurfaceInfo(wh.surface).road) {
@@ -519,7 +529,7 @@ void Vehicle::ComputeFfb(double dt) {
 		}
 	}
 	const double static_front = spec_.mass * kGravity * (1.0 - spec_.com_from_front / spec_.wheelbase);
-	const double norm = (static_front > 1000.0 ? static_front : 1000.0) * 1.1 * 0.057;
+	const double norm = (static_front > 1000.0 ? static_front : 1000.0) * 1.1 * 0.068;
 	// Below walking pace the tyres' side force comes from creep (camber, rolling
 	// back), not from steering, and would shove the wheel to one side: fade the
 	// aligning torque out and let a static spring (tyre scrub) centre it instead.
