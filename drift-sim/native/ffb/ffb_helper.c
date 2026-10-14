@@ -5,8 +5,9 @@
  * the game launches this small program and talks to it over UDP (localhost).
  * Force feedback goes straight through DirectInput - a constant force
  * (self-aligning torque from the front tyres) plus damper/spring - the way
- * Assetto Corsa and most sims do it. The wheel's controls are read with SDL3
- * and streamed back to the game.
+ * Assetto Corsa and most sims do it. The wheel's controls are read from the
+ * same DirectInput device (SDL3 for wheels without force feedback) and
+ * streamed back to the game.
  *
  * Packets in  (game -> helper, port 47811):
  *   "DLFB" f32 force(-1..1, +right) f32 damper(0..1) f32 spring(0..1) f32 gain(0..1)
@@ -96,6 +97,63 @@ static DIEFFECT eff_const, eff_damper, eff_spring;
 static char chosen[MAX_PATH] = "";
 static char last_problem[300] = "";
 
+/* The wheel's axes, sent as steering, throttle, brake, clutch, then the rest -
+ * the order DriftGame's [DriftWheel] defaults expect. DirectInput's own order
+ * differs per wheel (the G920 has a pedal on X and the wheel on Y), so they are
+ * picked by the names the driver gives them ("Wheel axis", "Accelerator"...). */
+static DWORD in_axis_ofs[8];
+static int in_naxes;
+static DWORD found_ofs[8];
+static char found_name[8][MAX_PATH];
+static int nfound_axes;
+static BOOL CALLBACK on_axis(LPCDIDEVICEOBJECTINSTANCEA o, LPVOID ctx) {
+	(void)ctx;
+	if (nfound_axes < 8) {
+		/* dwOfs is the device's native offset; where the axis lands in
+		 * DIJOYSTATE2 depends on its type. */
+		static int sliders;
+		if (nfound_axes == 0) sliders = 0;
+		DWORD ofs;
+		if (IsEqualGUID(&o->guidType, &GUID_XAxis)) ofs = DIJOFS_X;
+		else if (IsEqualGUID(&o->guidType, &GUID_YAxis)) ofs = DIJOFS_Y;
+		else if (IsEqualGUID(&o->guidType, &GUID_ZAxis)) ofs = DIJOFS_Z;
+		else if (IsEqualGUID(&o->guidType, &GUID_RxAxis)) ofs = DIJOFS_RX;
+		else if (IsEqualGUID(&o->guidType, &GUID_RyAxis)) ofs = DIJOFS_RY;
+		else if (IsEqualGUID(&o->guidType, &GUID_RzAxis)) ofs = DIJOFS_RZ;
+		else if (IsEqualGUID(&o->guidType, &GUID_Slider) && sliders < 2) ofs = DIJOFS_SLIDER(sliders++);
+		else return DIENUM_CONTINUE;
+		found_ofs[nfound_axes] = ofs;
+		snprintf(found_name[nfound_axes], MAX_PATH, "%s%s", o->tszName, (o->dwFlags & DIDOI_FFACTUATOR) ? " [ff]" : "");
+		nfound_axes++;
+	}
+	return DIENUM_CONTINUE;
+}
+
+static void order_axes(void) {
+	static const char *roles[4][4] = {
+		{"wheel", "steer", "[ff]", NULL}, {"accel", "gas", "throttle", NULL},
+		{"brake", NULL, NULL, NULL}, {"clutch", NULL, NULL, NULL}};
+	int used[8] = {0};
+	in_naxes = 0;
+	for (int r = 0; r < 4; r++)
+		for (int a = 0; a < nfound_axes; a++) {
+			int hit = 0;
+			for (int k = 0; k < 4 && roles[r][k]; k++) hit |= contains_ci(found_name[a], roles[r][k]);
+			if (!used[a] && hit) { used[a] = 1; in_axis_ofs[in_naxes++] = found_ofs[a]; break; }
+		}
+	/* Unnamed or extra axes follow in offset order. */
+	for (;;) {
+		int best = -1;
+		for (int a = 0; a < nfound_axes; a++)
+			if (!used[a] && (best < 0 || found_ofs[a] < found_ofs[best])) best = a;
+		if (best < 0) break;
+		used[best] = 1;
+		in_axis_ofs[in_naxes++] = found_ofs[best];
+	}
+	for (int a = 0; a < nfound_axes; a++) logmsg("  axis \"%s\" offset %lu", found_name[a], (unsigned long)found_ofs[a]);
+	for (int a = 0; a < in_naxes; a++) logmsg("  sent as axis %d: offset %lu", a, (unsigned long)in_axis_ofs[a]);
+}
+
 static DIDEVICEINSTANCEA ff_found[8];
 static int ff_nfound;
 static BOOL CALLBACK on_ff_device(LPCDIDEVICEINSTANCEA d, LPVOID ctx) {
@@ -139,6 +197,13 @@ static int find_ffb(void) {
 			HRESULT hr = di->lpVtbl->CreateDevice(di, &ff_found[i].guidInstance, &ff_dev, NULL);
 			if (FAILED(hr)) { snprintf(last_problem, sizeof(last_problem), "can't open %s (0x%08lx)", name, (unsigned long)hr); continue; }
 			ff_dev->lpVtbl->SetDataFormat(ff_dev, &c_dfDIJoystick2);
+			/* Controls come from this same device: once it's acquired exclusively
+			 * for force feedback, SDL's own DirectInput handle reads only zeros. */
+			DIPROPRANGE range = {{sizeof(DIPROPRANGE), sizeof(DIPROPHEADER), 0, DIPH_DEVICE}, -32768, 32767};
+			ff_dev->lpVtbl->SetProperty(ff_dev, DIPROP_RANGE, &range.diph);
+			nfound_axes = 0;
+			ff_dev->lpVtbl->EnumObjects(ff_dev, on_axis, NULL, DIDFT_AXIS);
+			order_axes();
 			hr = ff_dev->lpVtbl->SetCooperativeLevel(ff_dev, ff_window, DISCL_EXCLUSIVE | DISCL_BACKGROUND);
 			if (FAILED(hr)) logmsg("  SetCooperativeLevel: 0x%08lx", (unsigned long)hr);
 			DIPROPDWORD ac = {{sizeof(DIPROPDWORD), sizeof(DIPROPHEADER), 0, DIPH_DEVICE}, DIPROPAUTOCENTER_OFF};
@@ -173,7 +238,7 @@ static int find_ffb(void) {
 			else fx_spring->lpVtbl->Start(fx_spring, 1, 0);
 			snprintf(chosen, sizeof(chosen), "%s", name);
 			last_problem[0] = 0;
-			logmsg("force feedback on %s (damper %s, spring %s)", name, fx_damper ? "yes" : "no", fx_spring ? "yes" : "no");
+			logmsg("force feedback + controls on %s (%d axes, damper %s, spring %s)", name, in_naxes, fx_damper ? "yes" : "no", fx_spring ? "yes" : "no");
 		}
 	}
 	return fx_const != NULL;
@@ -214,7 +279,41 @@ static void ff_apply(float f, float d, float s) {
 	}
 }
 
-/* --- Controls (SDL) --------------------------------------------------------- */
+/* Sends the FFB wheel's controls, read through DirectInput. */
+static int send_input_di(void) {
+	if (!ff_dev) return 0;
+	DIJOYSTATE2 js;
+	ff_dev->lpVtbl->Poll(ff_dev);
+	HRESULT hr = ff_dev->lpVtbl->GetDeviceState(ff_dev, sizeof(js), &js);
+	if (FAILED(hr)) {
+		ff_recover(hr);
+		return 1;
+	}
+	unsigned char buf[4 + 4 + 8 * 4 + 4];
+	memcpy(buf, "DLIN", 4);
+	buf[4] = (unsigned char)in_naxes;
+	buf[5] = 32;
+	DWORD pov = js.rgdwPOV[0];
+	buf[6] = LOWORD(pov) == 0xFFFF ? 0 : (unsigned char)(1 + pov / 4500);   /* 0 = centred, 1..8 = N, NE.. */
+	buf[7] = 0;
+	int o = 8;
+	for (int a = 0; a < in_naxes; a++) {
+		LONG raw = *(const LONG *)((const unsigned char *)&js + in_axis_ofs[a]);
+		float v = raw / 32767.0f;
+		if (v < -1.0f) v = -1.0f;
+		memcpy(buf + o, &v, 4);
+		o += 4;
+	}
+	Uint32 bits = 0;
+	for (int b = 0; b < 32; b++)
+		if (js.rgbButtons[b] & 0x80) bits |= 1u << b;
+	memcpy(buf + o, &bits, 4);
+	o += 4;
+	sendto(sock_out, (const char *)buf, o, 0, (struct sockaddr *)&out_addr, sizeof(out_addr));
+	return 1;
+}
+
+/* --- Controls (SDL, for wheels without force feedback) ---------------------- */
 
 static SDL_Joystick *wheel_js = NULL;
 
@@ -231,6 +330,7 @@ static void open_input(void) {
 }
 
 static void send_input(void) {
+	if (send_input_di()) return;
 	if (!wheel_js) return;
 	SDL_UpdateJoysticks();
 	if (!SDL_JoystickConnected(wheel_js)) {
@@ -315,12 +415,16 @@ int main(int argc, char **argv) {
 	if (!SDL_Init(SDL_INIT_JOYSTICK)) logmsg("SDL init failed: %s", SDL_GetError());
 
 	find_ffb();
-	open_input();
+	if (!fx_const) open_input();
 	Uint64 last_scan = SDL_GetTicks();
 	float force = 0, damper = 0, spring = 0, gain = 1;
 	Uint64 last_force = 0;
 	Uint64 test_until = 0;
 	Uint64 last_status = 0;
+	Uint64 last_trace = 0;
+	int trace = getenv("DRIFT_FFB_TRACE") != NULL;   /* or --trace */
+	for (int i = 1; i < argc; i++)
+		if (strcmp(argv[i], "--trace") == 0) trace = 1;
 	int running = 1;
 	while (running) {
 		MSG msg;
@@ -344,10 +448,10 @@ int main(int argc, char **argv) {
 		Uint64 now = SDL_GetTicks();
 		if (parent && WaitForSingleObject(parent, 0) == WAIT_OBJECT_0) running = 0;
 		send_input();
-		if ((!fx_const || !wheel_js) && now - last_scan > 3000) {
+		if (!fx_const && now - last_scan > 3000) {
 			last_scan = now;
-			if (!fx_const) find_ffb();
-			if (!wheel_js) open_input();
+			find_ffb();
+			if (!fx_const && !wheel_js) open_input();
 		}
 		if (now - last_status > 1000) {
 			last_status = now;
@@ -368,6 +472,17 @@ int main(int argc, char **argv) {
 			f *= gain;
 		}
 		ff_apply(f, d, s);
+		if (trace && now - last_trace >= 100) {
+			last_trace = now;
+			float wheel = 0.0f;
+			DIJOYSTATE2 js;
+			if (ff_dev && SUCCEEDED(ff_dev->lpVtbl->GetDeviceState(ff_dev, sizeof(js), &js)) && in_naxes > 0)
+				wheel = *(const LONG *)((const unsigned char *)&js + in_axis_ofs[0]) / 32767.0f;
+			else if (wheel_js)
+				wheel = SDL_GetJoystickAxis(wheel_js, 0) / 32767.0f;
+			logmsg("trace t=%llu force=%+.3f damper=%.2f spring=%.2f dir=%ld mag=%ld wheel=%+.3f",
+				(unsigned long long)now, f, d, s, (long)ff_dir[0], (long)cf.lMagnitude, wheel);
+		}
 		SDL_Delay(2);
 	}
 	ff_release();

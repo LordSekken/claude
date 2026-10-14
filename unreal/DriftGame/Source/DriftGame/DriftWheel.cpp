@@ -41,6 +41,7 @@ void FDriftWheelMapping::Load()
 	GConfig->GetInt(S, TEXT("ReverseButton"), ReverseButton, GGameIni);
 	GConfig->GetFloat(S, TEXT("FfbGain"), FfbGain, GGameIni);
 	GConfig->GetBool(S, TEXT("FfbInvert"), bFfbInvert, GGameIni);
+	GConfig->GetBool(S, TEXT("Trace"), bTrace, GGameIni);
 }
 
 void FDriftWheel::Start()
@@ -65,7 +66,7 @@ void FDriftWheel::Start()
 		StatusText = TEXT("Wheel: ffb_helper.exe missing from Binaries/Win64 (build it from drift-sim/native/ffb)");
 		return;
 	}
-	const FString Args = FString::Printf(TEXT("--parent %u"), FPlatformProcess::GetCurrentProcessId());
+	const FString Args = FString::Printf(TEXT("--parent %u%s"), FPlatformProcess::GetCurrentProcessId(), Map.bTrace ? TEXT(" --trace") : TEXT(""));
 	Helper = FPlatformProcess::CreateProc(*Exe, *Args, true, true, true, nullptr, 0, nullptr, nullptr);
 	if (!Helper.IsValid())
 	{

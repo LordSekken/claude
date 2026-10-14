@@ -19,6 +19,7 @@ struct FDriftWheelMapping
 	int32 ReverseButton = 11;      // Driving Force Shifter on the Xbox G920: R comes first
 	float FfbGain = 1.f;
 	bool bFfbInvert = false;       // if the test pulls right first
+	bool bTrace = false;           // helper logs forces + wheel angle to %TEMP%\DriftLab_ffb.log
 
 	void Load();   // [DriftWheel] in Game.ini overrides the G920 defaults
 };
