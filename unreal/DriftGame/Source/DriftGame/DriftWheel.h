@@ -31,7 +31,7 @@ public:
 	void Start();
 	void Stop();
 	void Poll();
-	void SendForce(float Force, float Damper);
+	void SendForce(float Force, float Damper, float Spring);
 	void RunTest();
 
 	bool HasControls() const { return FPlatformTime::Seconds() - LastInput < 0.5; }

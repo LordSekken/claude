@@ -18,8 +18,9 @@
  *   order), u32 button bits (button i = bit i, first 32)
  *
  * Logitech's driver (G920/G29/G923 through G HUB) only accepts a one-axis
- * cartesian effect on the X axis with a non-zero direction; SDL's haptic
- * layer never got a force through to the G920, hence raw DirectInput.
+ * cartesian effect on the X axis with a non-zero direction, and takes the push
+ * side from that direction, not the magnitude's sign. SDL's haptic layer never
+ * got a force through to the G920, hence raw DirectInput.
  *
  * Safety: forces fade to zero if no force packet arrives for 250 ms; the
  * helper exits when the game process exits. Log: %TEMP%\DriftLab_ffb.log
@@ -88,7 +89,7 @@ static LPDIRECTINPUT8 di;
 static LPDIRECTINPUTDEVICE8 ff_dev;
 static LPDIRECTINPUTEFFECT fx_const, fx_damper, fx_spring;
 static DWORD ff_axis[1];
-static LONG ff_dir[1] = {1};   /* +X: positive magnitude pushes the wheel right */
+static LONG ff_dir[1] = {1};   /* sign = side (see ff_apply); magnitude stays >= 0 */
 static DICONSTANTFORCE cf;
 static DICONDITION damp_cond, spring_cond;
 static DIEFFECT eff_const, eff_damper, eff_spring;
@@ -194,8 +195,12 @@ static void ff_recover(HRESULT hr) {
 static void ff_apply(float f, float d, float s) {
 	if (!fx_const) return;
 	if (SDL_fabsf(f - shown_force) > 0.002f) {
-		cf.lMagnitude = (LONG)(SDL_clamp(f, -1.0f, 1.0f) * DI_FFNOMINALMAX);
-		HRESULT hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, DIEP_TYPESPECIFICPARAMS);
+		/* Logitech's driver ignores the magnitude's sign: push direction comes
+		 * only from the direction vector (+1 pushes the G920 left), so send
+		 * |force| and put the side in the direction. */
+		cf.lMagnitude = (LONG)(SDL_fabsf(SDL_clamp(f, -1.0f, 1.0f)) * DI_FFNOMINALMAX);
+		ff_dir[0] = f >= 0.0f ? -1 : 1;
+		HRESULT hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, DIEP_TYPESPECIFICPARAMS | DIEP_DIRECTION);
 		if (FAILED(hr)) ff_recover(hr);
 		else shown_force = f;
 	}

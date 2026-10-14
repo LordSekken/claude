@@ -474,7 +474,7 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	SyncVisuals(DeltaSeconds);
 	if (Wheel)
 	{
-		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()));
+		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()), static_cast<float>(Vehicle->FfbSpring()));
 	}
 }
 

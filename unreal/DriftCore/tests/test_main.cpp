@@ -327,6 +327,18 @@ void TestFfbDirection() {
 	CHECK(v.FfbDamper() < 0.2, "light damper at speed");
 }
 
+void TestFfbParked() {
+	// Stopped with the wheel turned: no tyre torque shoving the wheel, a centring spring instead.
+	FlatWorld w;
+	Vehicle v = Settled(TestCar(), w);
+	v.in.direct_steer = true;
+	v.in.steer = 0.4;
+	double worst = 0.0;
+	Run(1.0, v, w, [&](double) { worst = std::fmax(worst, std::fabs(v.FfbForce())); });
+	CHECK(worst < 0.05, "parked steering force %g", worst);
+	CHECK(v.FfbSpring() > 0.3, "parked spring %g", v.FfbSpring());
+}
+
 void TestSetGear() {
 	Vehicle v(TestCar());
 	v.SetGear(3);
@@ -380,6 +392,7 @@ int main() {
 		{"grass", TestGrassSlowsCar},
 		{"frame rate", TestFrameRateIndependent},
 		{"ffb direction", TestFfbDirection},
+		{"ffb parked", TestFfbParked},
 		{"set gear", TestSetGear},
 		{"example specs", TestExampleSpecs},
 	};

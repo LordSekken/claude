@@ -135,7 +135,7 @@ void FDriftWheel::Poll()
 	}
 }
 
-void FDriftWheel::SendForce(float Force, float Damper)
+void FDriftWheel::SendForce(float Force, float Damper, float Spring)
 {
 	if (!Tx)
 	{
@@ -144,7 +144,7 @@ void FDriftWheel::SendForce(float Force, float Damper)
 	// "DLFB" force(-1..1, +right) damper spring gain
 	uint8 Buf[20];
 	FMemory::Memcpy(Buf, "DLFB", 4);
-	const float Vals[4] = {FMath::Clamp(Map.bFfbInvert ? -Force : Force, -1.f, 1.f), FMath::Clamp(Damper, 0.f, 1.f), 0.f, Map.FfbGain};
+	const float Vals[4] = {FMath::Clamp(Map.bFfbInvert ? -Force : Force, -1.f, 1.f), FMath::Clamp(Damper, 0.f, 1.f), FMath::Clamp(Spring, 0.f, 1.f), Map.FfbGain};
 	FMemory::Memcpy(Buf + 4, Vals, sizeof(Vals));
 	int32 Sent = 0;
 	Tx->SendTo(Buf, sizeof(Buf), Sent, *HelperAddr());

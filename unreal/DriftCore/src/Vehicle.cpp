@@ -520,13 +520,18 @@ void Vehicle::ComputeFfb(double dt) {
 	}
 	const double static_front = spec_.mass * kGravity * (1.0 - spec_.com_from_front / spec_.wheelbase);
 	const double norm = (static_front > 1000.0 ? static_front : 1000.0) * 1.1 * 0.057;
-	double f = torque / norm;
+	// Below walking pace the tyres' side force comes from creep (camber, rolling
+	// back), not from steering, and would shove the wheel to one side: fade the
+	// aligning torque out and let a static spring (tyre scrub) centre it instead.
+	const double moving = Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
+	double f = torque / norm * moving;
 	if (ffb_jolt_t_ > 0.0) {
 		ffb_jolt_t_ -= dt;
 		f += ffb_jolt_;
 	}
 	ffb_force_ = Clamp(f + rumble, -1.0, 1.0);
 	ffb_damper_ = Lerp(0.45, 0.08, Clamp(speed / 8.0, 0.0, 1.0));
+	ffb_spring_ = Lerp(0.35, 0.0, Clamp(speed / 5.0, 0.0, 1.0));
 }
 
 }  // namespace drift

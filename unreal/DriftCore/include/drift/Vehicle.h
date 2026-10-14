@@ -130,6 +130,7 @@ public:
 	// Force feedback (-1..1, + pushes the steering wheel right), damper 0..1.
 	double FfbForce() const { return ffb_force_; }
 	double FfbDamper() const { return ffb_damper_; }
+	double FfbSpring() const { return ffb_spring_; }   // 0..1 centring spring (strong when parked)
 
 	void ShiftUp();
 	void ShiftDown();
@@ -176,7 +177,7 @@ private:
 	double last_impact_ = 0.0;
 	double accumulator_ = 0.0;
 
-	double ffb_force_ = 0.0, ffb_damper_ = 0.0;
+	double ffb_force_ = 0.0, ffb_damper_ = 0.0, ffb_spring_ = 0.0;
 	double ffb_jolt_ = 0.0, ffb_jolt_t_ = 0.0, ffb_time_ = 0.0;
 	unsigned rng_ = 12345u;
 	std::vector<BodyContact> contacts_;
