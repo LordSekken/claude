@@ -114,7 +114,10 @@ def new_material(name):
     path = MAT_DIR + "/" + name
     if eal.does_asset_exist(path):
         eal.delete_asset(path)
-    return asset_tools.create_asset(name, MAT_DIR, unreal.Material, unreal.MaterialFactoryNew())
+    mat = asset_tools.create_asset(name, MAT_DIR, unreal.Material, unreal.MaterialFactoryNew())
+    # SM6 turns Nanite on; without the flag a packaged game renders these wrong.
+    mat.set_editor_property("used_with_nanite", True)
+    return mat
 
 
 def surface_material(surf):
