@@ -9,6 +9,7 @@
 #include "GameFramework/Pawn.h"
 #include "drift/Vehicle.h"
 #include "DriftUnrealWorld.h"
+#include "DriftTelemetry.h"
 #include "DriftWheel.h"
 #include "DriftCarPawn.generated.h"
 
@@ -103,6 +104,7 @@ private:
 	std::unique_ptr<drift::Vehicle> Vehicle;
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
 	std::unique_ptr<FDriftWheel> Wheel;
+	std::unique_ptr<FDriftTelemetry> Telemetry;
 	int32 CameraMode = 0;             // 0 chase, 1 cockpit, 2 hood
 	bool bClutchUsed = false;         // clutch pedal touched: no auto clutch
 	bool bShifterUsed = false;        // H-shifter touched: no gear = neutral

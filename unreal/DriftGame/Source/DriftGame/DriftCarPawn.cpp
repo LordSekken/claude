@@ -16,6 +16,7 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UObject/ConstructorHelpers.h"
@@ -108,11 +109,21 @@ void ADriftCarPawn::BeginPlay()
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
 	Wheel = std::make_unique<FDriftWheel>();
 	Wheel->Start();
+	bool bRecord = false;
+	GConfig->GetBool(TEXT("DriftTelemetry"), TEXT("Record"), bRecord, GGameIni);
+	if (bRecord)
+	{
+		// Steering in AC's units: fraction of a 450 deg (lock-to-centre) wheel.
+		const double LockDeg = FMath::RadiansToDegrees(Vehicle->Spec().steer_lock);
+		Telemetry = std::make_unique<FDriftTelemetry>();
+		Telemetry->Open(CarName, UWorld::RemovePIEPrefix(GetWorld()->GetMapName()), LockDeg * SteerRatio / 450.0);
+	}
 }
 
 void ADriftCarPawn::EndPlay(const EEndPlayReason::Type Reason)
 {
 	Wheel.reset();   // stops the helper: the wheel goes limp
+	Telemetry.reset();
 	Super::EndPlay(Reason);
 }
 
@@ -473,6 +484,10 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	}
 	SetActorLocationAndRotation(DriftUE::Pos(Vehicle->Origin()), DriftUE::Rot(Vehicle->Rotation()));
 	SyncVisuals(DeltaSeconds);
+	if (Telemetry)
+	{
+		Telemetry->Sample(DeltaSeconds, *Vehicle, GetActorLocation());
+	}
 	if (Wheel)
 	{
 		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()), static_cast<float>(Vehicle->FfbSpring()));

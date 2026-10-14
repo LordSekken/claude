@@ -336,7 +336,7 @@ void TestFfbParked() {
 	double worst = 0.0;
 	Run(1.0, v, w, [&](double) { worst = std::fmax(worst, std::fabs(v.FfbForce())); });
 	CHECK(worst < 0.05, "parked steering force %g", worst);
-	CHECK(v.FfbSpring() > 0.3, "parked spring %g", v.FfbSpring());
+	CHECK(v.FfbSpring() > 0.1, "parked spring %g", v.FfbSpring());
 }
 
 void TestFfbDriftSelfSteer() {

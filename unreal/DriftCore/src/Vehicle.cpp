@@ -541,7 +541,7 @@ void Vehicle::ComputeFfb(double dt) {
 	}
 	ffb_force_ = Clamp(f + rumble, -1.0, 1.0);
 	ffb_damper_ = Lerp(0.45, 0.08, Clamp(speed / 8.0, 0.0, 1.0));
-	ffb_spring_ = Lerp(0.35, 0.0, Clamp(speed / 5.0, 0.0, 1.0));
+	ffb_spring_ = Lerp(0.12, 0.0, Clamp(speed / 5.0, 0.0, 1.0));   // AC: almost none parked
 }
 
 }  // namespace drift
