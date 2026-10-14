@@ -56,6 +56,7 @@ static func export_car(car_dir: String, project_dir: String, skin := "", base_bu
 	out.name = id
 	var tex_cache := {}
 	var counts := {}
+	var body_mesh: ArrayMesh = null
 	for g: String in groups:
 		var mesh := _merge(groups[g], root, offset, pivots.get(g, Vector3.ZERO), tex_cache)
 		if mesh == null:
@@ -66,6 +67,9 @@ static func export_car(car_dir: String, project_dir: String, skin := "", base_bu
 		mi.mesh = mesh
 		out.add_child(mi)
 		counts[g] = (groups[g] as Array).size()
+		if g == "BODY":
+			body_mesh = mesh
+	var hood_cam := _hood_cam(body_mesh, pivots.get("STEER", Vector3(0, 0.3, 0)))
 	root.free()
 	if not counts.has("BODY") or not counts.has("WHEEL_LF"):
 		out.free()
@@ -102,6 +106,7 @@ static func export_car(car_dir: String, project_dir: String, skin := "", base_bu
 		"steer_pivot": _arr(pivots.get("STEER", Vector3.ZERO)),
 		"steer_axis": _arr(steer_axis),
 		"has_steer": pivots.has("STEER"),
+		"hood_cam": _arr(hood_cam),
 		"parts": counts.keys(),
 	}
 	var spec_id := "ac_" + id
@@ -112,6 +117,21 @@ static func export_car(car_dir: String, project_dir: String, skin := "", base_bu
 	f.close()
 	return {"ok": true, "id": id, "spec_id": spec_id, "glb": glb, "parts": counts, "physics": spec_r.physics,
 		"message": "Exported %s (%s) - in Unreal run Scripts/build_car.py." % [id, ", ".join(counts.keys())]}
+
+
+## Hood camera: on the centreline just ahead of the windshield (~0.7 m in
+## front of the steering wheel), 10 cm above the highest body point there.
+static func _hood_cam(body: ArrayMesh, steer: Vector3) -> Vector3:
+	var z := steer.z - 0.7
+	var top := -INF
+	if body:
+		for si in body.get_surface_count():
+			for v: Vector3 in body.surface_get_arrays(si)[Mesh.ARRAY_VERTEX]:
+				if absf(v.x) < 0.3 and absf(v.z - z) < 0.1 and v.y > top:
+					top = v.y
+	if top == -INF:
+		top = steer.y + 0.15
+	return Vector3(0, top + 0.1, z)
 
 
 static func _gather(n: Node, root: Node3D, group: String, owners: Dictionary, groups: Dictionary) -> void:

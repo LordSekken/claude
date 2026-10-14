@@ -34,16 +34,29 @@ vite files) is an unrelated web app.
   `.github/workflows/drift-core.yml` (DriftCore on GCC + MSVC).
 
 ## Status (where we left off)
-- UE project compiles on the owner's PC and the editor opens. Shinamoyama (recorded from FH6, built
-  from a raw session file in Drift Lab's "Record from Forza" screen, camber 75%) imported and showed
-  the course, but the road was invisible: exported triangles were wound backwards. Fixed in commit
-  ec29634 (test added). **Next: re-export from the new Drift Lab build, re-run the script, press Play,
-  check the checkerboard (likely shaders still compiling, or textures failed to download), then drive.**
-- The UE side had never been compiled before the owner's PC - expect small fixes. Now that Claude runs
-  locally, build/test in UE directly and read `unreal/DriftGame/Saved/Logs/`.
+- The owner uses `C:\Dev\claude\unreal\DriftGame` (the git checkout); the `C:\Dev\claude-claude-...`
+  folders are old copies. Shinamoyama (FH6 recording, `user://tracks/forza_zone.json`, camber 75%)
+  drives. Fixed: inverted road winding, checkerboard (roughness sampler must be Masks), car riding on
+  the merged trees' auto collision box. DX12 + SM6 on (Nanite).
+- AC cars: `tools/export_unreal_car.gd -- <ac car dir> <unreal project>` then `Scripts/build_car.py`
+  (selects it via Content/DriftData/SelectedCar.txt). Test car: BDC Street v4 Miata in
+  `...\DriftGame 5.5\test ars\bdc_streetspec_miata_v4` (data unpacked into its data/). glTF import is a
+  +90 deg yaw off DriftUE (fixed on the car meshes). AC STEER_RATIO is signed - use its magnitude.
+- G920 (Xbox version): ffb_helper.exe (built locally with MSVC + SDL3 3.2.8 VC package into
+  Binaries/Win64 - not in git) streams "DLIN" controls and runs FFB; the game starts/stops it. G HUB
+  lists the wheel 3x and only the 3rd accepts effects (SDL_HAPTIC_STEERING_AXIS). Mapping:
+  Config/DefaultGame.ini [DriftWheel]. Cameras chase/cockpit/hood (C or Y). T = FFB test.
+- Not yet confirmed by the owner: FFB direction (T must pull left first, else FfbInvert=True), G920
+  button numbers (HUD top line shows held buttons), steering weight.
+- Headless UE testing: `UnrealEditor.exe <uproject> -ExecCmds="py <script>"` (not -ExecutePythonScript,
+  which quits) with a slate post-tick callback driving PIE; HighResShot for screenshots. Compiling
+  needs the owner's editor closed (Live Coding blocks UBT).
 
 ## Roadmap agreed with the owner
-1. Get Shinamoyama drivable in Unreal; tune feel; real car model instead of the box; G920 wheel + FFB.
+1. Done: Shinamoyama drivable, AC Miata model + physics, G920 + FFB (owner to verify). Next: graphics
+   presets + VR preset (Quest 2 + 3070 Ti, OpenXR), ACC-level road detail (close-up stones, Nanite
+   displacement), driver body/arms (paddles vs shifter vs handbrake), SDL gamepads (PS4/PS5/Switch/
+   8BitDo), gamepad steering polish (owner: low priority, wheel first).
 2. AC importers: AC track (.kn5, Drift Lab already reads kn5) -> Unreal; AC car model + physics
    (Drift Lab `scripts/ac/ac_car_importer.gd` already reads unpacked data/*.ini) -> DriftCore spec.
 3. AC telemetry recorder + side-by-side comparison (same car/corner in AC vs DriftGame: slip angle,

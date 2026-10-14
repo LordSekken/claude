@@ -51,20 +51,20 @@ ADriftCarPawn::ADriftCarPawn()
 	{
 		USceneComponent* Hub = CreateDefaultSubobject<USceneComponent>(*FString::Printf(TEXT("%sHub"), WheelNames[I]));
 		Hub->SetupAttachment(Root);
-		UStaticMeshComponent* Wheel = CreateDefaultSubobject<UStaticMeshComponent>(WheelNames[I]);
-		Wheel->SetupAttachment(Hub);
-		Wheel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		UStaticMeshComponent* WheelMesh = CreateDefaultSubobject<UStaticMeshComponent>(WheelNames[I]);
+		WheelMesh->SetupAttachment(Hub);
+		WheelMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		if (CylinderMesh.Succeeded())
 		{
-			Wheel->SetStaticMesh(CylinderMesh.Object);
+			WheelMesh->SetStaticMesh(CylinderMesh.Object);
 		}
 		// Engine cylinder: 1 m tall along Z, 1 m across. Roll it onto its side.
-		Wheel->SetRelativeRotation(FRotator(0.f, 0.f, 90.f));
+		WheelMesh->SetRelativeRotation(FRotator(0.f, 0.f, 90.f));
 		UStaticMeshComponent* Susp = CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("%sSusp"), WheelNames[I]));
 		Susp->SetupAttachment(Hub);
 		Susp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		WheelHubs.Add(Hub);
-		WheelMeshes.Add(Wheel);
+		WheelMeshes.Add(WheelMesh);
 		SuspMeshes.Add(Susp);
 	}
 	WheelMeshBase = FRotator(0.f, 0.f, 90.f).Quaternion();
@@ -89,6 +89,11 @@ ADriftCarPawn::ADriftCarPawn()
 	CockpitCamera->SetupAttachment(Root);
 	CockpitCamera->SetFieldOfView(75.f);
 	CockpitCamera->SetAutoActivate(false);
+
+	HoodCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("HoodCamera"));
+	HoodCamera->SetupAttachment(Root);
+	HoodCamera->SetFieldOfView(80.f);
+	HoodCamera->SetAutoActivate(false);
 }
 
 void ADriftCarPawn::BeginPlay()
@@ -101,6 +106,14 @@ void ADriftCarPawn::BeginPlay()
 	LastOnRoadYaw = GetActorRotation().Yaw;
 	LowestY = Vehicle->Origin().y - 300.0;
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
+	Wheel = std::make_unique<FDriftWheel>();
+	Wheel->Start();
+}
+
+void ADriftCarPawn::EndPlay(const EEndPlayReason::Type Reason)
+{
+	Wheel.reset();   // stops the helper: the wheel goes limp
+	Super::EndPlay(Reason);
 }
 
 void ADriftCarPawn::LoadSpec()
@@ -108,6 +121,8 @@ void ADriftCarPawn::LoadSpec()
 	drift::CarSpec Spec;
 	FLinearColor Paint(0.55f, 0.55f, 0.58f);
 	FString ModelId;
+	bool bHoodSet = false;
+	SteerRatio = 0.0;
 	// Scripts/build_car.py picks the car to drive (an imported AC car).
 	FString Selected;
 	if (FFileHelper::LoadFileToString(Selected, *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("DriftData/SelectedCar.txt"))))
@@ -135,13 +150,19 @@ void ADriftCarPawn::LoadSpec()
 			{
 				const drift::JsonValue& M = S["model"];
 				ModelId = UTF8_TO_TCHAR(M.Str("id", "").c_str());
-				SteerRatio = M.Num("steer_ratio", 8.0);
+				SteerRatio = M.Num("steer_ratio", 0.0);
 				const drift::JsonValue& P = M["steer_pivot"];
 				const drift::JsonValue& A = M["steer_axis"];
 				if (M.Bool("has_steer", false) && P.IsArray() && P.arr.size() == 3 && A.IsArray() && A.arr.size() == 3)
 				{
 					SteerMesh->SetRelativeLocation(DriftUE::Pos(drift::Vec3(P.arr[0].num, P.arr[1].num, P.arr[2].num)));
 					SteerAxis = DriftUE::Dir(drift::Vec3(A.arr[0].num, A.arr[1].num, A.arr[2].num)).GetSafeNormal();
+				}
+				const drift::JsonValue& H = M["hood_cam"];
+				if (H.IsArray() && H.arr.size() == 3)
+				{
+					HoodCamera->SetRelativeLocation(DriftUE::Pos(drift::Vec3(H.arr[0].num, H.arr[1].num, H.arr[2].num)));
+					bHoodSet = true;
 				}
 			}
 		}
@@ -157,6 +178,17 @@ void ADriftCarPawn::LoadSpec()
 	CarName = UTF8_TO_TCHAR(Spec.name.c_str());
 	Vehicle = std::make_unique<drift::Vehicle>(Spec);
 	CockpitCamera->SetRelativeLocation(DriftUE::Pos(Vehicle->SeatLocal()));
+	if (!bHoodSet)
+	{
+		// No model: centreline, a bit below eye height, ~1.1 m ahead of the seat.
+		const drift::Vec3 Seat = Vehicle->SeatLocal();
+		HoodCamera->SetRelativeLocation(DriftUE::Pos(drift::Vec3(0.0, Seat.y - 0.08, Seat.z - 1.1)));
+	}
+	if (SteerRatio <= 1.0)
+	{
+		// Without the car's own ratio: full wheel rotation = full lock.
+		SteerRatio = 450.0 / FMath::Max(10.0, FMath::RadiansToDegrees(Spec.steer_lock));
+	}
 	bHasModel = !ModelId.IsEmpty() && LoadModel(ModelId);
 	if (bHasModel)
 	{
@@ -271,6 +303,7 @@ void ADriftCarPawn::CreateInput()
 	CameraAction = MakeAction(TEXT("IA_Camera"), EInputActionValueType::Boolean);
 	ResetAction = MakeAction(TEXT("IA_Reset"), EInputActionValueType::Boolean);
 	AutoShiftAction = MakeAction(TEXT("IA_AutoShift"), EInputActionValueType::Boolean);
+	FfbTestAction = MakeAction(TEXT("IA_FfbTest"), EInputActionValueType::Boolean);
 
 	Mapping = NewObject<UInputMappingContext>(this, TEXT("IMC_Drift"));
 	// Gamepad (Forza-style layout).
@@ -298,6 +331,7 @@ void ADriftCarPawn::CreateInput()
 	Mapping->MapKey(CameraAction, EKeys::C);
 	Mapping->MapKey(ResetAction, EKeys::R);
 	Mapping->MapKey(AutoShiftAction, EKeys::M);
+	Mapping->MapKey(FfbTestAction, EKeys::T);
 }
 
 void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -318,6 +352,7 @@ void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		Eic->BindAction(CameraAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleCamera);
 		Eic->BindAction(ResetAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnReset);
 		Eic->BindAction(AutoShiftAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleAutoShift);
+		Eic->BindAction(FfbTestAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbTest);
 	}
 	else
 	{
@@ -333,6 +368,10 @@ void ADriftCarPawn::ReadInput(float DeltaSeconds)
 	In.auto_shift = bAutoShift;
 	In.auto_clutch = true;
 	In.direct_steer = false;
+	if (ReadWheel())
+	{
+		return;
+	}
 	const APlayerController* PC = Cast<APlayerController>(GetController());
 	const UEnhancedPlayerInput* Epi = PC ? Cast<UEnhancedPlayerInput>(PC->PlayerInput) : nullptr;
 	if (!Epi || !Mapping)
@@ -347,6 +386,69 @@ void ADriftCarPawn::ReadInput(float DeltaSeconds)
 	In.throttle = FMath::Max(0.f, Value(ThrottleAction));
 	In.brake = FMath::Max(0.f, Value(BrakeAction));
 	In.handbrake = FMath::Max(0.f, Value(HandbrakeAction));
+}
+
+bool ADriftCarPawn::ReadWheel()
+{
+	if (!Wheel)
+	{
+		return false;
+	}
+	Wheel->Poll();
+	if (!Wheel->HasControls())
+	{
+		return false;
+	}
+	const FDriftWheelMapping& M = Wheel->Map;
+	drift::Inputs& In = Vehicle->in;
+	// Wheel angle -> road-wheel angle through the car's steering ratio.
+	const double WheelDeg = Wheel->Axis(M.SteerAxis) * M.RotationDeg * 0.5;
+	const double LockDeg = FMath::RadiansToDegrees(Vehicle->Spec().steer_lock);
+	In.steer = FMath::Clamp(WheelDeg / SteerRatio / LockDeg, -1.0, 1.0);
+	In.direct_steer = true;
+	In.steering_assist = 0.0;
+	auto Pedal = [&M, this](int32 Axis) {
+		if (!Wheel->AxisLive(Axis))
+		{
+			return 0.f;
+		}
+		const float V = Wheel->Axis(Axis);
+		return FMath::Clamp(M.bPedalsInverted ? (1.f - V) * 0.5f : (V + 1.f) * 0.5f, 0.f, 1.f);
+	};
+	In.throttle = Pedal(M.ThrottleAxis);
+	In.brake = Pedal(M.BrakeAxis);
+	In.clutch = Pedal(M.ClutchAxis);
+	bClutchUsed |= In.clutch > 0.5;
+	In.auto_clutch = !bClutchUsed;
+	In.handbrake = Wheel->Button(M.Handbrake) ? 1.0 : 0.0;
+
+	if (Wheel->Pressed(M.ShiftUp)) OnShiftUp();
+	if (Wheel->Pressed(M.ShiftDown)) OnShiftDown();
+	if (Wheel->Pressed(M.Camera)) OnToggleCamera();
+	if (Wheel->Pressed(M.Reset)) OnReset();
+	if (M.FirstGearButton >= 0)
+	{
+		// H-shifter: 1..6 then R; out of gear = neutral once it's been used.
+		int32 Gear = -2;
+		for (int32 K = 0; K < 7; ++K)
+		{
+			if (Wheel->Button(M.FirstGearButton + K))
+			{
+				Gear = K < 6 ? K + 1 : -1;
+			}
+		}
+		if (Gear != -2)
+		{
+			bShifterUsed = true;
+			bAutoShift = false;
+			Vehicle->SetGear(Gear);
+		}
+		else if (bShifterUsed)
+		{
+			Vehicle->SetGear(0);
+		}
+	}
+	return true;
 }
 
 void ADriftCarPawn::Tick(float DeltaSeconds)
@@ -370,6 +472,10 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	}
 	SetActorLocationAndRotation(DriftUE::Pos(Vehicle->Origin()), DriftUE::Rot(Vehicle->Rotation()));
 	SyncVisuals(DeltaSeconds);
+	if (Wheel)
+	{
+		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()));
+	}
 }
 
 void ADriftCarPawn::SyncVisuals(float DeltaSeconds)
@@ -385,10 +491,10 @@ void ADriftCarPawn::SyncVisuals(float DeltaSeconds)
 	}
 	if (bHasModel)
 	{
-		// Same as Drift Lab: turn about the column by steer x ratio. The axis map
-		// is a reflection, so the angle flips sign in Unreal's frame.
+		// Same as Drift Lab: turn about the column by steer x ratio (sign checked
+		// in the cockpit: steer left turns the rim left).
 		const double Steer = (Vehicle->Wheel(0).steer + Vehicle->Wheel(1).steer) * 0.5;
-		SteerMesh->SetRelativeRotation(FQuat(SteerAxis, -Steer * SteerRatio) * ModelBase);
+		SteerMesh->SetRelativeRotation(FQuat(SteerAxis, Steer * SteerRatio) * ModelBase);
 	}
 	// Chase camera: swings toward the direction of travel, so you see where
 	// the car is going while it's sideways.
@@ -425,9 +531,16 @@ void ADriftCarPawn::OnShiftDown()
 
 void ADriftCarPawn::OnToggleCamera()
 {
-	bCockpit = !bCockpit;
-	ChaseCamera->SetActive(!bCockpit);
+	SetCamera((CameraMode + 1) % 3);
+}
+
+void ADriftCarPawn::SetCamera(int32 Mode)
+{
+	CameraMode = Mode;
+	const bool bCockpit = Mode == 1;
+	ChaseCamera->SetActive(Mode == 0);
 	CockpitCamera->SetActive(bCockpit);
+	HoodCamera->SetActive(Mode == 2);
 	// The placeholder body is a solid box - hide it from inside. A real model
 	// has its interior.
 	Body->SetVisibility(!bCockpit || bHasModel);
@@ -441,4 +554,12 @@ void ADriftCarPawn::OnReset()
 void ADriftCarPawn::OnToggleAutoShift()
 {
 	bAutoShift = !bAutoShift;
+}
+
+void ADriftCarPawn::OnFfbTest()
+{
+	if (Wheel)
+	{
+		Wheel->RunTest();   // pulls left, then right
+	}
 }

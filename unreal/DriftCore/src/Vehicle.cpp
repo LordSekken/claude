@@ -92,6 +92,14 @@ void Vehicle::ShiftDown() {
 	}
 }
 
+void Vehicle::SetGear(int gear) {
+	gear = gear < -1 ? -1 : (gear > GearCount() ? GearCount() : gear);
+	if (gear != gear_) {
+		gear_ = gear;
+		shift_timer_ = spec_.shift_time;
+	}
+}
+
 double Vehicle::EngineTorque(double rpm, double throttle) const {
 	double full = spec_.TorqueAt(rpm) * spec_.power_mult;
 	if (spec_.turbo) full *= (1.0 + boost_) / (1.0 + spec_.boost_stock);

@@ -133,6 +133,7 @@ public:
 
 	void ShiftUp();
 	void ShiftDown();
+	void SetGear(int gear);   // H-shifter: -1 R, 0 N, 1..GearCount()
 	double EngineTorque(double rpm, double throttle) const;
 
 private:

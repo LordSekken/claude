@@ -9,6 +9,7 @@
 #include "GameFramework/Pawn.h"
 #include "drift/Vehicle.h"
 #include "DriftUnrealWorld.h"
+#include "DriftWheel.h"
 #include "DriftCarPawn.generated.h"
 
 class UCameraComponent;
@@ -69,12 +70,18 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Drift")
 	TObjectPtr<UCameraComponent> CockpitCamera;
 
+	/** On the hood, just ahead of the windshield. */
+	UPROPERTY(VisibleAnywhere, Category = "Drift")
+	TObjectPtr<UCameraComponent> HoodCamera;
+
 	// --- For the HUD -----------------------------------------------------------
 	const drift::Vehicle* GetVehicle() const { return Vehicle.get(); }
 	FString GetCarName() const { return CarName; }
+	const FDriftWheel* GetWheel() const { return Wheel.get(); }
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
 private:
 	void LoadSpec();
@@ -82,6 +89,8 @@ private:
 	void ResetCar(const FVector& Location, float Yaw);
 	void CreateInput();
 	void ReadInput(float DeltaSeconds);
+	bool ReadWheel();
+	void SetCamera(int32 Mode);
 	void SyncVisuals(float DeltaSeconds);
 
 	void OnShiftUp();
@@ -89,11 +98,15 @@ private:
 	void OnToggleCamera();
 	void OnReset();
 	void OnToggleAutoShift();
+	void OnFfbTest();
 
 	std::unique_ptr<drift::Vehicle> Vehicle;
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
+	std::unique_ptr<FDriftWheel> Wheel;
+	int32 CameraMode = 0;             // 0 chase, 1 cockpit, 2 hood
+	bool bClutchUsed = false;         // clutch pedal touched: no auto clutch
+	bool bShifterUsed = false;        // H-shifter touched: no gear = neutral
 	FString CarName;
-	bool bCockpit = false;
 	bool bHasModel = false;           // real car meshes instead of the box
 	FQuat WheelMeshBase = FQuat::Identity;
 	FQuat ModelBase = FQuat::Identity;    // imported mesh frame -> DriftUE frame
@@ -124,4 +137,6 @@ private:
 	TObjectPtr<UInputAction> ResetAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> AutoShiftAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> FfbTestAction;
 };

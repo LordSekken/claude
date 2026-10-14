@@ -327,6 +327,18 @@ void TestFfbDirection() {
 	CHECK(v.FfbDamper() < 0.2, "light damper at speed");
 }
 
+void TestSetGear() {
+	Vehicle v(TestCar());
+	v.SetGear(3);
+	CHECK(v.Gear() == 3, "gear %d", v.Gear());
+	v.SetGear(-1);
+	CHECK(v.Gear() == -1, "reverse");
+	v.SetGear(99);
+	CHECK(v.Gear() == v.GearCount(), "clamped to top gear %d", v.Gear());
+	v.SetGear(0);
+	CHECK(v.Gear() == 0, "neutral");
+}
+
 void TestExampleSpecs() {
 	const char* files[] = {"legacy_rwd.json", "outback98_stock.json", "s14_sr20_drift.json", "miata_na_drift.json"};
 	for (const char* f : files) {
@@ -368,6 +380,7 @@ int main() {
 		{"grass", TestGrassSlowsCar},
 		{"frame rate", TestFrameRateIndependent},
 		{"ffb direction", TestFfbDirection},
+		{"set gear", TestSetGear},
 		{"example specs", TestExampleSpecs},
 	};
 	for (const T& t : tests) {
