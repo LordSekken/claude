@@ -162,7 +162,7 @@ func test_ac_import() -> void:
 	var dir := "user://test_ac_car/data"
 	DirAccess.make_dir_recursive_absolute(dir)
 	var files := {
-		"car.ini": "[INFO]\nSCREEN_NAME=Test S13\n[BASIC]\nTOTALMASS=1275\nINERTIA=1.69,1.29,4.52\n[CONTROLS]\nSTEER_LOCK=540\nSTEER_RATIO=9 ; drift ratio\n",
+		"car.ini": "[INFO]\nSCREEN_NAME=Test S13\n[BASIC]\nTOTALMASS=1275\nINERTIA=1.69,1.29,4.52\n[CONTROLS]\nSTEER_LOCK=540\nSTEER_RATIO=-9 ; drift ratio (AC writes it signed)\n",
 		"engine.ini": "[HEADER]\nPOWER_CURVE=power.lut\n[ENGINE_DATA]\nINERTIA=0.15\nLIMITER=7800\nMINIMUM=900\n[TURBO_0]\nMAX_BOOST=1.0\nWASTEGATE=0.9\nREFERENCE_RPM=4500\n",
 		"power.lut": "0|0\n1000|90\n3000|140\n5000|165\n6500|160\n7800|130\n",
 		"drivetrain.ini": "[TRACTION]\nTYPE=RWD\n[GEARS]\nCOUNT=5\nGEAR_R=-3.38\nGEAR_1=3.32\nGEAR_2=1.90\nGEAR_3=1.31\nGEAR_4=1.00\nGEAR_5=0.76\nFINAL=4.11\n[DIFFERENTIAL]\nPOWER=1.0\nCOAST=1.0\nPRELOAD=0\n[GEARBOX]\nCHANGE_UP_TIME=120\n",
@@ -180,7 +180,7 @@ func test_ac_import() -> void:
 		var res := CarBuilder.assemble(r.build, app.parts)
 		check(res.ok, "imported AC car assembles")
 		check(res.spec.diff_type == "welded", "AC POWER=COAST=1 -> welded diff")
-		check(absf(rad_to_deg(float(res.spec.steer_lock)) - 60.0) < 0.5, "AC steer lock 540/9 = 60 deg")
+		check(absf(rad_to_deg(float(res.spec.steer_lock)) - 60.0) < 0.5, "AC steer lock 540/|-9| = 60 deg")
 		check(int(res.spec.gears.size()) == 5, "AC gears imported")
 		check(float(res.stats.peak_hp) > 150.0 and float(res.stats.peak_hp) < 360.0, "AC turbo engine power plausible (%s)" % res.stats.peak_hp)
 

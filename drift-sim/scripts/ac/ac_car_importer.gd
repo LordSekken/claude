@@ -81,7 +81,8 @@ static func import_folder(dir: String) -> Dictionary:
 	var h := float(inertia[1]) if inertia.size() > 1 else 1.3
 	var l := float(inertia[2]) if inertia.size() > 2 else 4.4
 	var lock_wheel := AcIni.f(car, "CONTROLS", "STEER_LOCK", 450.0)
-	var ratio := maxf(AcIni.f(car, "CONTROLS", "STEER_RATIO", 13.0), 1.0)
+	# AC writes the ratio signed (e.g. -8.5); the sign is only a direction convention.
+	var ratio := maxf(absf(AcIni.f(car, "CONTROLS", "STEER_RATIO", 13.0)), 1.0)
 	var road_lock := clampf(lock_wheel / ratio, 20.0, 75.0)
 	var traction := AcIni.s(drv, "TRACTION", "TYPE", "RWD").to_upper()
 	if traction.begins_with("AWD"):
