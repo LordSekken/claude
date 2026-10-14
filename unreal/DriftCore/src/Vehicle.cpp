@@ -507,19 +507,41 @@ void Vehicle::UpdateDrivetrain(double dt) {
 // force x (pneumatic + caster trail); pneumatic trail collapses past peak slip
 // so the wheel goes light as the fronts let go. Plus kerb/rough rumble,
 // wall jolts and low-speed damping.
+namespace {
+// Steering rack force against front-axle slip angle, measured from the owner's
+// Assetto Corsa runs (BDC Miata, G920, 70 % gain; 37k samples): light around
+// centre, peaks at the tyres' limit, then stays strong while sliding - which is
+// what winds the rim into countersteer. Output is AC's finalFF scale.
+struct FfbPoint { double slip_deg, force; };
+constexpr FfbPoint kFfbCurve[] = {
+	{0.0, 0.0}, {0.5, 0.105}, {1.5, 0.278}, {2.5, 0.397}, {4.0, 0.50}, {6.5, 0.579},
+	{10.0, 0.585}, {14.0, 0.511}, {19.0, 0.513}, {26.0, 0.517}, {37.0, 0.446}, {60.0, 0.35}, {90.0, 0.25}};
+
+double FfbCurve(double slip_deg) {
+	const double a = std::fabs(slip_deg);
+	double f = kFfbCurve[sizeof(kFfbCurve) / sizeof(kFfbCurve[0]) - 1].force;
+	for (size_t i = 1; i < sizeof(kFfbCurve) / sizeof(kFfbCurve[0]); ++i) {
+		if (a <= kFfbCurve[i].slip_deg) {
+			const FfbPoint& p = kFfbCurve[i - 1];
+			const FfbPoint& q = kFfbCurve[i];
+			f = p.force + (q.force - p.force) * (a - p.slip_deg) / (q.slip_deg - p.slip_deg);
+			break;
+		}
+	}
+	return slip_deg < 0.0 ? -f : f;
+}
+}  // namespace
+
 void Vehicle::ComputeFfb(double dt) {
 	ffb_time_ += dt;
-	double torque = 0.0, rumble = 0.0;
+	double rumble = 0.0, slip_sum = 0.0, fz_sum = 0.0;
 	const double speed = Speed();
 	for (const WheelState& wh : wheels_) {
 		if (!wh.front || !wh.contact) continue;
-		const double peak = wh.tire.Params().peak_slip_angle;
-		double pneumatic = 0.035 * (1.0 - std::fabs(wh.slip_angle) / (peak * 1.7));
-		if (pneumatic < 0.0) pneumatic = 0.0;
-		// Mechanical trail (caster) keeps pulling the wheel toward the direction of
-		// travel after the tyre is past its peak - what spins the rim into
-		// countersteer in a drift. Drift cars run lots of caster: ~4 cm.
-		torque += -wh.fy * (pneumatic + 0.04);
+		// Load-weighted front slip angle; + = travel to the right of the wheel,
+		// which pulls the rim right (+).
+		slip_sum += wh.slip_angle * wh.fz;
+		fz_sum += wh.fz;
 		if (wh.surface == Surface::Kerb) {
 			rumble += std::sin(ffb_time_ * kTau * 22.0) * 0.12 * Clamp(speed / 15.0, 0.0, 1.0);
 		} else if (!GetSurfaceInfo(wh.surface).road) {
@@ -529,12 +551,16 @@ void Vehicle::ComputeFfb(double dt) {
 		}
 	}
 	const double static_front = spec_.mass * kGravity * (1.0 - spec_.com_from_front / spec_.wheelbase);
-	const double norm = (static_front > 1000.0 ? static_front : 1000.0) * 1.1 * 0.068;
-	// Below walking pace the tyres' side force comes from creep (camber, rolling
-	// back), not from steering, and would shove the wheel to one side: fade the
-	// aligning torque out and let a static spring (tyre scrub) centre it instead.
-	const double moving = Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
-	double f = torque / norm * moving;
+	double f = 0.0;
+	if (fz_sum > 1.0) {
+		// Heavier front (braking, bumps) = heavier rack, lighter when it unloads.
+		const double load = Clamp(fz_sum / (static_front > 1000.0 ? static_front : 1000.0), 0.3, 1.6);
+		f = FfbCurve(Rad2Deg(slip_sum / fz_sum)) * load;
+	}
+	// Below walking pace the tyres' slip comes from creep (camber, rolling
+	// back), not steering, and would shove the wheel to one side: fade it out
+	// and let a light static spring (tyre scrub) centre it instead.
+	f *= Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
 	if (ffb_jolt_t_ > 0.0) {
 		ffb_jolt_t_ -= dt;
 		f += ffb_jolt_;

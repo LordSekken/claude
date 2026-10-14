@@ -89,7 +89,12 @@ static func import_folder(dir: String) -> Dictionary:
 		traction = "AWD"
 	elif traction != "FWD":
 		traction = "RWD"
-	var radius := AcIni.f(tyr, "FRONT", "RADIUS", 0.31)
+	# The compound AC fits by default (tyres.ini [COMPOUND_DEFAULT] INDEX; 0 = [FRONT]/[REAR],
+	# n = [FRONT_n]/[REAR_n]) - the first section is often a different, harder tyre.
+	var compound := int(AcIni.f(tyr, "COMPOUND_DEFAULT", "INDEX", 0.0))
+	var tyre_front := "FRONT" if compound <= 0 or not tyr.has("FRONT_%d" % compound) else "FRONT_%d" % compound
+	var tyre_rear := "REAR" if compound <= 0 or not tyr.has("REAR_%d" % compound) else "REAR_%d" % compound
+	var radius := AcIni.f(tyr, tyre_front, "RADIUS", AcIni.f(tyr, "FRONT", "RADIUS", 0.31))
 	var chassis := {
 		"id": car_id, "name": name, "make": brand, "year": year, "body_style": "coupe", "color": "#c8c8c8",
 		"mass_kg": AcIni.f(car, "BASIC", "TOTALMASS", 1300.0) - 75.0,
@@ -99,7 +104,7 @@ static func import_folder(dir: String) -> Dictionary:
 		"length_m": clampf(l, 2.5, 6.5), "width_m": clampf(w, 1.4, 2.3), "height_m": clampf(h, 1.0, 2.2),
 		"cg_height_m": clampf(h * 0.36, 0.35, 0.7), "weight_front": AcIni.f(sus, "BASIC", "CG_LOCATION", 0.52),
 		"engine_cg_from_front_axle_m": 0.1, "wheel_radius_m": radius,
-		"tire_width_mm": AcIni.f(tyr, "FRONT", "WIDTH", 0.225) * 1000.0,
+		"tire_width_mm": AcIni.f(tyr, tyre_front, "WIDTH", AcIni.f(tyr, "FRONT", "WIDTH", 0.225)) * 1000.0,
 		"steer_lock_deg": road_lock, "max_steer_lock_deg": maxf(road_lock, 68.0),
 		"brake_torque_nm": AcIni.f(brk, "DATA", "MAX_TORQUE", 3000.0) * 2.0,
 		"brake_bias_front": AcIni.f(brk, "DATA", "FRONT_SHARE", 0.65),
@@ -127,8 +132,15 @@ static func import_folder(dir: String) -> Dictionary:
 
 	var tire := func(sec: String) -> Dictionary:
 		var d := {"compound": "sport", "size": null}
-		var dy := AcIni.f(tyr, sec, "DY_REF", 0.0)
-		var dx := AcIni.f(tyr, sec, "DX_REF", 0.0)
+		# Grip at DriftCore's 3.5 kN reference load. Current AC tyres give
+		# mu = D0 + D1 * load_kN; older ones only DY_REF/DX_REF.
+		var mu := func(prefix: String) -> float:
+			var d0 := AcIni.f(tyr, sec, prefix + "0", 0.0)
+			if d0 > 0.0:
+				return d0 + AcIni.f(tyr, sec, prefix + "1", 0.0) * 3.5
+			return AcIni.f(tyr, sec, prefix + "_REF", 0.0)
+		var dy: float = mu.call("DY")
+		var dx: float = mu.call("DX")
 		if dy > 0.0:
 			d["mu_lat"] = dy
 		if dx > 0.0:
@@ -150,7 +162,7 @@ static func import_folder(dir: String) -> Dictionary:
 		"tune": {
 			"diff": {"type": dtype, "power": dp, "coast": dc, "preload_nm": AcIni.f(drv, "DIFFERENTIAL", "PRELOAD", 0.0)},
 			"awd_front_split": AcIni.f(drv, "AWD", "FRONT_SHARE", 0.4),
-			"tire_front": tire.call("FRONT"), "tire_rear": tire.call("REAR"),
+			"tire_front": tire.call(tyre_front), "tire_rear": tire.call(tyre_rear),
 		},
 		"notes": "Imported from Assetto Corsa: %s" % car_dir,
 	}

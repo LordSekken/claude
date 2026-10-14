@@ -365,7 +365,22 @@ void TestFfbDriftSelfSteer() {
 		weakest = std::fmin(weakest, v.FfbForce() * (v.DriftAngleDeg() > 0 ? 1.0 : -1.0));
 	});
 	CHECK(samples > 30, "got sideways (%d samples past 10 deg)", samples);
-	CHECK(weakest > 0.4, "pulls into countersteer while sliding: weakest %g", weakest);
+	// AC (owner's runs): ~0.5 into countersteer while sliding, scaled by front load.
+	CHECK(weakest > 0.3, "pulls into countersteer while sliding: weakest %g", weakest);
+}
+
+void TestFfbLightOnCentre() {
+	// AC: ~0.1 at half a degree of front slip, ~0.4 at 2.5 deg - light around centre.
+	FlatWorld w;
+	Vehicle v = Settled(TestCar(), w);
+	v.in.direct_steer = true;
+	v.in.throttle = 0.5;
+	v.in.auto_shift = true;
+	Run(4.0, v, w);
+	v.in.throttle = 0.3;
+	v.in.steer = 0.01;
+	Run(1.0, v, w);
+	CHECK(std::fabs(v.FfbForce()) < 0.2, "near-straight steering is light: %g", v.FfbForce());
 }
 
 void TestStallRestart() {
@@ -436,6 +451,7 @@ int main() {
 		{"ffb direction", TestFfbDirection},
 		{"ffb parked", TestFfbParked},
 		{"ffb drift self-steer", TestFfbDriftSelfSteer},
+		{"ffb light on centre", TestFfbLightOnCentre},
 		{"stall restart", TestStallRestart},
 		{"set gear", TestSetGear},
 		{"example specs", TestExampleSpecs},

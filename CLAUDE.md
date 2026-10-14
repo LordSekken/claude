@@ -48,8 +48,15 @@ vite files) is an unrelated web app.
   DIJOFS_X with direction +1. The game starts/stops the helper. Mapping: Config/DefaultGame.ini
   [DriftWheel] (G920 Xbox: A=0 handbrake, X=2 reset, shifter R=11, gears 1-6 = 12-17). Cameras
   chase/cockpit/hood (C or Y). T = FFB test. HUD top lines show wheel/pedal/button readout.
-- Not yet confirmed by the owner: that FFB is felt and its direction (T must pull left first, else
-  FfbInvert=True), steering weight, odd RPM/clutch behaviour they reported (check pedal readout).
+- FFB works on the owner's G920 (Logitech takes the push side from the effect direction, not the
+  magnitude sign; controls are read from the same DirectInput device, axes by name/type).
+- AC comparison (roadmap step 3, started): `Record AC Telemetry.bat` (ac_telemetry.exe, AC shared
+  memory -> Documents\DriftLab\telemetry\ac_*.csv); DriftGame writes dg_*.csv in the same layout/signs;
+  `drift-sim/tools/compare_telemetry.py` compares them. Owner's AC FFB: gain 70%, filter 4%, min 0,
+  road 50, kerb 20, slip 9, ABS 21, near-linear g920.lut. DriftCore FFB now follows AC's measured
+  force-vs-front-slip curve. Findings: importer had used tyres.ini's first compound (fixed: default
+  compound + DY0/DY1 at 3.5 kN); AC Miata understeer ~0.55 deg/g vs ours ~1.1 (was 2.6). Next suspect:
+  no camber model (BDC front static camber -4.6 deg) - add camber + roll geometry from AC data.
 - Headless UE runs fail with DXGI 887A002B (access denied) when the owner's display is off/away:
   add -RenderOffscreen.
 - Headless UE testing: `UnrealEditor.exe <uproject> -ExecCmds="py <script>"` (not -ExecutePythonScript,
