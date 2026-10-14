@@ -232,6 +232,14 @@ def set_collision(mesh, enabled):
         unreal.log_warning("[DriftGame] collision setup failed on %s: %s" % (mesh.get_name(), e))
 
 
+def remove_simple_collision(mesh):
+    try:
+        unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem).remove_collisions(mesh)
+        eal.save_loaded_asset(mesh)
+    except Exception as e:
+        unreal.log_warning("[DriftGame] couldn't strip collision from %s: %s" % (mesh.get_name(), e))
+
+
 def open_fresh_level(path):
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -297,7 +305,11 @@ def build(folder):
         actor.set_actor_label(name)
         comp = actor.static_mesh_component
         if visual_only:
-            comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+            # The profile, not set_collision_enabled: StaticMeshActors re-apply
+            # their BlockAll profile on load. Merged tree meshes otherwise get one
+            # auto box over the whole forest and the car drives on top of it.
+            comp.set_collision_profile_name("NoCollision")
+            remove_simple_collision(mesh)
             continue
         surf = surface_of(name)
         if surf:
