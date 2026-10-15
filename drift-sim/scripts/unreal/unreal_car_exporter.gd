@@ -238,13 +238,16 @@ static func _spec(car_dir: String, base_build: String, model: Dictionary) -> Dic
 	if not r.ok:
 		return {"ok": false, "message": "Couldn't assemble %s: %s" % [build.get("id", "?"), ", ".join(r.errors)]}
 	var spec: Dictionary = r.spec
-	var radii := [spec.get("radius_f"), spec.get("radius_r")]
+	var keep := {}
+	for k in ["radius_f", "radius_r", "track_f", "track_r", "wheelbase"]:
+		keep[k] = spec.get(k)
 	AcCarModel.apply_geometry(spec, model)
 	if physics.begins_with("AC data"):
-		# The model gives wheel *positions*; tyres.ini has the real radius
-		# (the model's wheel-centre height includes AC's GRAPHICS_OFFSET).
-		spec["radius_f"] = radii[0]
-		spec["radius_r"] = radii[1]
+		# AC's physics geometry (suspensions/tyres.ini) wins; the model only
+		# places the body. The model's wheel pivots can sit inboard of the
+		# physics track (the BDC kit: 1.49 vs AC's 1.625 m).
+		for k in keep:
+			spec[k] = keep[k]
 	if spec.get("eye") is Vector3:
 		spec["eye"] = _arr(spec.eye)
 	var ui: Variant = JsonUtil.load_file(car_dir.path_join("ui/ui_car.json"))

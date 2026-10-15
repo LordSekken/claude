@@ -106,6 +106,9 @@ private:
 	std::unique_ptr<FDriftWheel> Wheel;
 	std::unique_ptr<FDriftTelemetry> Telemetry;
 	int32 CameraMode = 0;             // 0 chase, 1 cockpit, 2 hood
+	float CockpitVFov = 54.f;         // vertical degrees, like AC (owner: 54)
+	float HoodVFov = 54.f;
+	float LastAspect = 0.f;
 	bool bClutchUsed = false;         // clutch pedal touched: no auto clutch
 	bool bShifterUsed = false;        // H-shifter touched: no gear = neutral
 	FString CarName;

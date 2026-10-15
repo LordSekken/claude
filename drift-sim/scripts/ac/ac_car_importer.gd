@@ -95,6 +95,14 @@ static func import_folder(dir: String) -> Dictionary:
 	var tyre_front := "FRONT" if compound <= 0 or not tyr.has("FRONT_%d" % compound) else "FRONT_%d" % compound
 	var tyre_rear := "REAR" if compound <= 0 or not tyr.has("REAR_%d" % compound) else "REAR_%d" % compound
 	var radius := AcIni.f(tyr, tyre_front, "RADIUS", AcIni.f(tyr, "FRONT", "RADIUS", 0.31))
+	# AC: CG height = wheel radius + BASEY on each axle (BASEY < 0 = below the
+	# wheel centre), blended by CG_LOCATION. Only cars without BASEY fall back to
+	# a guess from the inertia box.
+	var cg_height := clampf(h * 0.36, 0.35, 0.7)
+	if sus.has("FRONT") and (sus.FRONT as Dictionary).has("BASEY"):
+		var wf := AcIni.f(sus, "BASIC", "CG_LOCATION", 0.52)
+		var r_rear := AcIni.f(tyr, tyre_rear, "RADIUS", radius)
+		cg_height = clampf(wf * (radius + AcIni.f(sus, "FRONT", "BASEY", 0.0)) + (1.0 - wf) * (r_rear + AcIni.f(sus, "REAR", "BASEY", 0.0)), 0.1, 1.0)
 	var chassis := {
 		"id": car_id, "name": name, "make": brand, "year": year, "body_style": "coupe", "color": "#c8c8c8",
 		"mass_kg": AcIni.f(car, "BASIC", "TOTALMASS", 1300.0) - 75.0,
@@ -102,7 +110,7 @@ static func import_folder(dir: String) -> Dictionary:
 		"wheelbase_m": AcIni.f(sus, "BASIC", "WHEELBASE", 2.5),
 		"track_front_m": AcIni.f(sus, "FRONT", "TRACK", 1.5), "track_rear_m": AcIni.f(sus, "REAR", "TRACK", 1.5),
 		"length_m": clampf(l, 2.5, 6.5), "width_m": clampf(w, 1.4, 2.3), "height_m": clampf(h, 1.0, 2.2),
-		"cg_height_m": clampf(h * 0.36, 0.35, 0.7), "weight_front": AcIni.f(sus, "BASIC", "CG_LOCATION", 0.52),
+		"cg_height_m": cg_height, "weight_front": AcIni.f(sus, "BASIC", "CG_LOCATION", 0.52),
 		"engine_cg_from_front_axle_m": 0.1, "wheel_radius_m": radius,
 		"tire_width_mm": AcIni.f(tyr, tyre_front, "WIDTH", AcIni.f(tyr, "FRONT", "WIDTH", 0.225)) * 1000.0,
 		"steer_lock_deg": road_lock, "max_steer_lock_deg": maxf(road_lock, 68.0),
@@ -146,9 +154,12 @@ static func import_folder(dir: String) -> Dictionary:
 			d["mu_lat"] = dy
 		if dx > 0.0:
 			d["mu_long"] = dx
+		# AC's tyres reach most of their grip well before FRICTION_LIMIT_ANGLE
+		# (flex/camber gain sharpen them): the owner's AC telemetry (BDC Miata,
+		# front slip vs lateral g) matches a peak at ~0.75x the file value.
 		var fla := AcIni.f(tyr, sec, "FRICTION_LIMIT_ANGLE", 0.0)
 		if fla > 0.0:
-			d["peak_slip_angle_deg"] = fla
+			d["peak_slip_angle_deg"] = fla * 0.75
 		return d
 	var dtype := "lsd"
 	var dp := AcIni.f(drv, "DIFFERENTIAL", "POWER", 0.0)

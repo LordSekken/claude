@@ -7,6 +7,9 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "EnhancedPlayerInput.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/Engine.h"
+#include "UnrealClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -109,6 +112,8 @@ void ADriftCarPawn::BeginPlay()
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
 	Wheel = std::make_unique<FDriftWheel>();
 	Wheel->Start();
+	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("CockpitVFov"), CockpitVFov, GGameIni);
+	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("HoodVFov"), HoodVFov, GGameIni);
 	bool bRecord = false;
 	GConfig->GetBool(TEXT("DriftTelemetry"), TEXT("Record"), bRecord, GGameIni);
 	if (bRecord)
@@ -496,6 +501,20 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 
 void ADriftCarPawn::SyncVisuals(float DeltaSeconds)
 {
+	// Unreal's FOV is horizontal; AC's (and our setting) vertical - convert for
+	// the current screen shape so the cockpit looks the same size as in AC.
+	if (GEngine && GEngine->GameViewport && GEngine->GameViewport->Viewport)
+	{
+		const FIntPoint Size = GEngine->GameViewport->Viewport->GetSizeXY();
+		const float Aspect = Size.Y > 0 ? static_cast<float>(Size.X) / Size.Y : 16.f / 9.f;
+		if (!FMath::IsNearlyEqual(Aspect, LastAspect, 0.001f))
+		{
+			LastAspect = Aspect;
+			auto HFov = [Aspect](float VDeg) { return FMath::RadiansToDegrees(2.f * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(VDeg) * 0.5f) * Aspect)); };
+			CockpitCamera->SetFieldOfView(HFov(CockpitVFov));
+			HoodCamera->SetFieldOfView(HFov(HoodVFov));
+		}
+	}
 	for (int32 I = 0; I < 4; ++I)
 	{
 		const drift::WheelState& W = Vehicle->Wheel(I);

@@ -74,7 +74,7 @@ static func validate_part(kind: String, p: Dictionary) -> PackedStringArray:
 			_need(e, p, "length_m", 2.5, 6.5)
 			_need(e, p, "width_m", 1.4, 2.3)
 			_need(e, p, "height_m", 1.0, 2.2)
-			_need(e, p, "cg_height_m", 0.3, 1.0)
+			_need(e, p, "cg_height_m", 0.1, 1.0)   # AC cars often sit low: radius + BASEY
 			_need(e, p, "weight_front", 0.35, 0.70)
 			_need(e, p, "wheel_radius_m", 0.25, 0.45)
 			if not ["RWD", "FWD", "AWD"].has(str(p.get("stock_drivetrain", ""))):

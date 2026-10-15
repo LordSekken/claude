@@ -55,7 +55,9 @@ vite files) is an unrelated web app.
   `drift-sim/tools/compare_telemetry.py` compares them. Owner's AC FFB: gain 70%, filter 4%, min 0,
   road 50, kerb 20, slip 9, ABS 21, near-linear g920.lut. DriftCore FFB now follows AC's measured
   force-vs-front-slip curve. Findings: importer had used tyres.ini's first compound (fixed: default
-  compound + DY0/DY1 at 3.5 kN); AC Miata understeer ~0.55 deg/g vs ours ~1.1 (was 2.6). Next suspect:
+  compound + DY0/DY1 at 3.5 kN; peak slip angle = 0.75x FRICTION_LIMIT_ANGLE, calibrated to AC front slip vs
+  lateral g), handbrake per wheel, CG height = radius + BASEY (was a 0.45 m guess; Miata 0.175), AC TRACK
+  kept over model wheel pivots, sliding friction along slip velocity. Understeer ~0.6-1.0 deg/g (AC 0.55). Next:
   no camber model (BDC front static camber -4.6 deg) - add camber + roll geometry from AC data.
 - Headless UE runs fail with DXGI 887A002B (access denied) when the owner's display is off/away:
   add -RenderOffscreen.

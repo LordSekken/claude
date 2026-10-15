@@ -166,7 +166,7 @@ func test_ac_import() -> void:
 		"engine.ini": "[HEADER]\nPOWER_CURVE=power.lut\n[ENGINE_DATA]\nINERTIA=0.15\nLIMITER=7800\nMINIMUM=900\n[TURBO_0]\nMAX_BOOST=1.0\nWASTEGATE=0.9\nREFERENCE_RPM=4500\n",
 		"power.lut": "0|0\n1000|90\n3000|140\n5000|165\n6500|160\n7800|130\n",
 		"drivetrain.ini": "[TRACTION]\nTYPE=RWD\n[GEARS]\nCOUNT=5\nGEAR_R=-3.38\nGEAR_1=3.32\nGEAR_2=1.90\nGEAR_3=1.31\nGEAR_4=1.00\nGEAR_5=0.76\nFINAL=4.11\n[DIFFERENTIAL]\nPOWER=1.0\nCOAST=1.0\nPRELOAD=0\n[GEARBOX]\nCHANGE_UP_TIME=120\n",
-		"suspensions.ini": "[BASIC]\nWHEELBASE=2.475\nCG_LOCATION=0.54\n[FRONT]\nTRACK=1.48\nSPRING_RATE=90000\nDAMP_BUMP=3500\nDAMP_REBOUND=6000\n[REAR]\nTRACK=1.47\nSPRING_RATE=70000\nDAMP_BUMP=3000\nDAMP_REBOUND=5000\n[ARB]\nFRONT=30000\nREAR=8000\n",
+		"suspensions.ini": "[BASIC]\nWHEELBASE=2.475\nCG_LOCATION=0.54\n[FRONT]\nBASEY=-0.10\nTRACK=1.48\nSPRING_RATE=90000\nDAMP_BUMP=3500\nDAMP_REBOUND=6000\n[REAR]\nBASEY=-0.08\nTRACK=1.47\nSPRING_RATE=70000\nDAMP_BUMP=3000\nDAMP_REBOUND=5000\n[ARB]\nFRONT=30000\nREAR=8000\n",
 		# Default compound is _1 (current AC format: mu = D0 + D1 * load_kN); [FRONT]/[REAR] is a decoy.
 		"tyres.ini": "[COMPOUND_DEFAULT]\nINDEX=1\n[FRONT]\nWIDTH=0.225\nRADIUS=0.31\nDY_REF=1.05\nDX_REF=1.2\nFRICTION_LIMIT_ANGLE=8.5\n[REAR]\nWIDTH=0.235\nRADIUS=0.31\nDY_REF=1.30\nDX_REF=1.3\n" +
 			"[FRONT_1]\nWIDTH=0.225\nRADIUS=0.30\nDY0=1.40\nDY1=-0.05\nDX0=1.38\nDX1=-0.03\nFRICTION_LIMIT_ANGLE=11.7\n[REAR_1]\nWIDTH=0.235\nRADIUS=0.30\nDY0=1.30\nDY1=-0.05\nDX0=1.40\nDX1=-0.025\nFRICTION_LIMIT_ANGLE=12.0\n",
@@ -188,7 +188,8 @@ func test_ac_import() -> void:
 		var tr: Dictionary = r.build.tune.tire_rear
 		check(absf(float(tf.get("mu_lat", 0)) - 1.225) < 0.001 and absf(float(tr.get("mu_lat", 0)) - 1.125) < 0.001,
 			"AC default compound, DY0+DY1*3.5kN: front %s rear %s" % [tf.get("mu_lat"), tr.get("mu_lat")])
-		check(float(tf.get("peak_slip_angle_deg", 0)) == 11.7, "AC compound peak slip angle")
+		check(absf(float(tf.get("peak_slip_angle_deg", 0)) - 11.7 * 0.75) < 0.001, "AC compound peak slip angle (x0.75, AC-calibrated)")
+		check(absf(float(res.spec.cg_height) - 0.2092) < 0.002, "AC CG height = radius + BASEY: %s" % res.spec.cg_height)
 		check(absf(float(res.spec.handbrake_torque) - 5200.0) < 1.0, "AC HANDBRAKE_TORQUE is per wheel: %s" % res.spec.handbrake_torque)
 		check(float(res.spec.tire_f.mu_lat) > float(res.spec.tire_r.mu_lat), "front grippier than rear, as in the AC file")
 		check(float(res.stats.peak_hp) > 150.0 and float(res.stats.peak_hp) < 360.0, "AC turbo engine power plausible (%s)" % res.stats.peak_hp)
