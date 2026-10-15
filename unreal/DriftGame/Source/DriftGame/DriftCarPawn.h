@@ -79,6 +79,8 @@ public:
 	const drift::Vehicle* GetVehicle() const { return Vehicle.get(); }
 	FString GetCarName() const { return CarName; }
 	const FDriftWheel* GetWheel() const { return Wheel.get(); }
+	int32 GetGraphicsPreset() const { return GraphicsPreset; }
+	double GetGraphicsShownUntil() const { return GraphicsShownUntil; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -100,6 +102,7 @@ private:
 	void OnReset();
 	void OnToggleAutoShift();
 	void OnFfbTest();
+	void OnCycleGraphics();
 
 	std::unique_ptr<drift::Vehicle> Vehicle;
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
@@ -109,6 +112,8 @@ private:
 	float CockpitVFov = 54.f;         // vertical degrees, like AC (owner: 54)
 	float HoodVFov = 54.f;
 	float LastAspect = 0.f;
+	int32 GraphicsPreset = 2;
+	double GraphicsShownUntil = 0.0;
 	bool bClutchUsed = false;         // clutch pedal touched: no auto clutch
 	bool bShifterUsed = false;        // H-shifter touched: no gear = neutral
 	FString CarName;
@@ -144,4 +149,6 @@ private:
 	TObjectPtr<UInputAction> AutoShiftAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> FfbTestAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> GraphicsAction;
 };

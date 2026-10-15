@@ -4,6 +4,7 @@
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
 #include "DriftCarPawn.h"
+#include "DriftGraphics.h"
 
 void ADriftHUD::DrawHUD()
 {
@@ -45,7 +46,11 @@ void ADriftHUD::DrawHUD()
 		DrawText(FString::Printf(TEXT("%d\u00B0"), FMath::RoundToInt(Angle)), FLinearColor(1.f, 0.75f, 0.2f), Canvas->ClipX * 0.5f - 40.f, 60.f, Big, 2.2f);
 	}
 	DrawText(Car->GetCarName(), Dim, X, Y + 100.f, Small, 1.2f);
-	DrawText(TEXT("A/Space handbrake  B/E up  X/Q down  Y/C camera (chase/cockpit/hood)  View/R reset  RS/M auto-manual  T wheel FFB test"), Dim, X, Y + 125.f, Small, 1.0f);
+	if (FPlatformTime::Seconds() < Car->GetGraphicsShownUntil())
+	{
+		DrawText(FString::Printf(TEXT("Graphics: %s  (F5)"), DriftGraphics::Name(Car->GetGraphicsPreset())), White, Canvas->ClipX * 0.5f - 90.f, 110.f, Big, 1.4f);
+	}
+	DrawText(TEXT("A/Space handbrake  B/E up  X/Q down  Y/C camera (chase/cockpit/hood)  View/R reset  RS/M auto-manual  T wheel FFB test  F5 graphics"), Dim, X, Y + 125.f, Small, 1.0f);
 	if (const FDriftWheel* W = Car->GetWheel())
 	{
 		// Wheel status and held buttons (their numbers go in [DriftWheel] in Game.ini).

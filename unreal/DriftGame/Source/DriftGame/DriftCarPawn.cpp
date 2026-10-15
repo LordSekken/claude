@@ -25,6 +25,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "drift/CarSpec.h"
 #include "drift/Json.h"
+#include "DriftGraphics.h"
 #include "DriftUE.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDrift, Log, All);
@@ -112,6 +113,8 @@ void ADriftCarPawn::BeginPlay()
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
 	Wheel = std::make_unique<FDriftWheel>();
 	Wheel->Start();
+	GraphicsPreset = DriftGraphics::Saved();
+	DriftGraphics::Apply(GraphicsPreset, false);
 	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("CockpitVFov"), CockpitVFov, GGameIni);
 	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("HoodVFov"), HoodVFov, GGameIni);
 	bool bRecord = false;
@@ -320,6 +323,7 @@ void ADriftCarPawn::CreateInput()
 	ResetAction = MakeAction(TEXT("IA_Reset"), EInputActionValueType::Boolean);
 	AutoShiftAction = MakeAction(TEXT("IA_AutoShift"), EInputActionValueType::Boolean);
 	FfbTestAction = MakeAction(TEXT("IA_FfbTest"), EInputActionValueType::Boolean);
+	GraphicsAction = MakeAction(TEXT("IA_Graphics"), EInputActionValueType::Boolean);
 
 	Mapping = NewObject<UInputMappingContext>(this, TEXT("IMC_Drift"));
 	// Gamepad (Forza-style layout).
@@ -348,6 +352,7 @@ void ADriftCarPawn::CreateInput()
 	Mapping->MapKey(ResetAction, EKeys::R);
 	Mapping->MapKey(AutoShiftAction, EKeys::M);
 	Mapping->MapKey(FfbTestAction, EKeys::T);
+	Mapping->MapKey(GraphicsAction, EKeys::F5);
 }
 
 void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -369,6 +374,7 @@ void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		Eic->BindAction(ResetAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnReset);
 		Eic->BindAction(AutoShiftAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleAutoShift);
 		Eic->BindAction(FfbTestAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbTest);
+		Eic->BindAction(GraphicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnCycleGraphics);
 	}
 	else
 	{
@@ -589,6 +595,13 @@ void ADriftCarPawn::OnReset()
 void ADriftCarPawn::OnToggleAutoShift()
 {
 	bAutoShift = !bAutoShift;
+}
+
+void ADriftCarPawn::OnCycleGraphics()
+{
+	GraphicsPreset = (GraphicsPreset + 1) % DriftGraphics::Count;
+	DriftGraphics::Apply(GraphicsPreset);
+	GraphicsShownUntil = FPlatformTime::Seconds() + 3.0;
 }
 
 void ADriftCarPawn::OnFfbTest()
