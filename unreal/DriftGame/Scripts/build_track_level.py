@@ -25,7 +25,8 @@ MAT_DIR = "/Game/DriftMaterials"
 
 # surface -> (Poly Haven asset, resolution, colour tint)
 SURFACES = {
-    "asphalt": ("asphalt_track", "4k", None),
+    # Coarse grey aggregate (visible stones up close), not the smooth racetrack scan.
+    "asphalt": ("clean_asphalt", "4k", None),
     "grass": ("leafy_grass", "2k", (0.72, 1.0, 0.55)),
     "dirt": ("forest_ground_04", "2k", None),
     "gravel": ("gravel_floor_02", "2k", None),
@@ -128,40 +129,79 @@ def surface_material(surf):
     n = import_texture(meta["maps"]["N"], tex_dir, normal=True)
     r = import_texture(meta["maps"]["R"], tex_dir, linear=True)
     mat = new_material("M_" + surf.capitalize())
+    E = unreal
+    node = lambda cls, x, y: mel.create_material_expression(mat, cls, x, y)
+    link = mel.connect_material_expressions
     # UVs from world position (top-down), scaled to the scan's real size: no
-    # stretching however the road mesh is laid out.
-    wp = mel.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -1100, 0)
-    mask = mel.create_material_expression(mat, unreal.MaterialExpressionComponentMask, -950, 0)
+    # stretching however the road mesh is laid out. Three scales:
+    #   base   - the scan at real size
+    #   detail - 4x denser, faded in within ~15 m: stones/pebbles up close
+    #   macro  - ~14x larger, gentle light/dark variation so it doesn't tile
+    wp = node(E.MaterialExpressionWorldPosition, -1700, 0)
+    mask = node(E.MaterialExpressionComponentMask, -1550, 0)
     mask.set_editor_property("r", True)
     mask.set_editor_property("g", True)
-    uv = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, -800, 0)
-    uv.set_editor_property("const_b", 1.0 / (max(meta["tile_m"], 0.5) * 100.0))
-    mel.connect_material_expressions(wp, "", mask, "")
-    mel.connect_material_expressions(mask, "", uv, "A")
+    link(wp, "", mask, "")
+    def scaled(k, y):
+        m = node(E.MaterialExpressionMultiply, -1400, y)
+        m.set_editor_property("const_b", k / (max(meta["tile_m"], 0.5) * 100.0))
+        link(mask, "", m, "A")
+        return m
+    uv_base, uv_detail, uv_macro = scaled(1.0, 0), scaled(4.0, 200), scaled(0.07, 400)
+    # fade: 0 at the camera .. 1 from 15 m away
+    cam = node(E.MaterialExpressionCameraPositionWS, -1700, 700)
+    dist = node(E.MaterialExpressionDistance, -1550, 700)
+    link(cam, "", dist, "A")
+    link(wp, "", dist, "B")
+    div = node(E.MaterialExpressionDivide, -1400, 700)
+    div.set_editor_property("const_b", 1500.0)
+    link(dist, "", div, "A")
+    fade = node(E.MaterialExpressionSaturate, -1250, 700)
+    link(div, "", fade, "")
 
-    def sample(tex, y, sampler):
-        s = mel.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -550, y)
-        s.set_editor_property("texture", tex)
-        s.set_editor_property("sampler_type", sampler)
-        mel.connect_material_expressions(uv, "", s, "UVs")
-        return s
+    def sample(tex, uv, y, sampler):
+        t = node(E.MaterialExpressionTextureSample, -1000, y)
+        t.set_editor_property("texture", tex)
+        t.set_editor_property("sampler_type", sampler)
+        link(uv, "", t, "UVs")
+        return t
 
-    sd = sample(d, -300, unreal.MaterialSamplerType.SAMPLERTYPE_COLOR)
+    def near_far(near, far, out, y):
+        l = node(E.MaterialExpressionLinearInterpolate, -650, y)
+        link(near, out, l, "A")
+        link(far, out, l, "B")
+        link(fade, "", l, "Alpha")
+        return l
+
+    color = E.MaterialSamplerType.SAMPLERTYPE_COLOR
+    albedo = near_far(sample(d, uv_detail, -500, color), sample(d, uv_base, -300, color), "RGB", -400)
+    macro = sample(d, uv_macro, -700, color)
+    mscale = node(E.MaterialExpressionMultiply, -800, -700)
+    mscale.set_editor_property("const_b", 0.5)
+    link(macro, "R", mscale, "A")
+    mbias = node(E.MaterialExpressionAdd, -650, -700)
+    mbias.set_editor_property("const_b", 0.75)
+    link(mscale, "", mbias, "A")
+    shaded = node(E.MaterialExpressionMultiply, -450, -500)
+    link(albedo, "", shaded, "A")
+    link(mbias, "", shaded, "B")
+    out_color = shaded
     if tint:
-        tn = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, -250, -300)
-        c = mel.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -450, -450)
+        tn = node(E.MaterialExpressionMultiply, -250, -500)
+        c = node(E.MaterialExpressionConstant3Vector, -450, -650)
         c.set_editor_property("constant", unreal.LinearColor(tint[0], tint[1], tint[2], 1.0))
-        mel.connect_material_expressions(sd, "RGB", tn, "A")
-        mel.connect_material_expressions(c, "", tn, "B")
-        mel.connect_material_property(tn, "", unreal.MaterialProperty.MP_BASE_COLOR)
-    else:
-        mel.connect_material_property(sd, "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
-    sn = sample(n, 0, unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL)
-    mel.connect_material_property(sn, "RGB", unreal.MaterialProperty.MP_NORMAL)
+        link(shaded, "", tn, "A")
+        link(c, "", tn, "B")
+        out_color = tn
+    mel.connect_material_property(out_color, "", unreal.MaterialProperty.MP_BASE_COLOR)
+    normal = E.MaterialSamplerType.SAMPLERTYPE_NORMAL
+    nrm = near_far(sample(n, uv_detail, 0, normal), sample(n, uv_base, 150, normal), "RGB", 75)
+    mel.connect_material_property(nrm, "", unreal.MaterialProperty.MP_NORMAL)
     # Sampler type must match the texture's compression (TC_MASKS -> Masks), or
     # the material fails to compile and renders as the default checkerboard.
-    sr = sample(r, 300, unreal.MaterialSamplerType.SAMPLERTYPE_MASKS)
-    mel.connect_material_property(sr, "R", unreal.MaterialProperty.MP_ROUGHNESS)
+    masks = E.MaterialSamplerType.SAMPLERTYPE_MASKS
+    rough = near_far(sample(r, uv_detail, 350, masks), sample(r, uv_base, 500, masks), "R", 425)
+    mel.connect_material_property(rough, "", unreal.MaterialProperty.MP_ROUGHNESS)
     mel.recompile_material(mat)
     eal.save_loaded_asset(mat)
     return mat
