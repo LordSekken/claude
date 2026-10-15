@@ -13,6 +13,23 @@
 #include "DriftWheel.h"
 #include "DriftCarPawn.generated.h"
 
+/** What other players see of a car: sent ~30x/s by its owner, interpolated elsewhere. */
+USTRUCT()
+struct FDriftNetState
+{
+	GENERATED_BODY()
+
+	UPROPERTY() FVector_NetQuantize10 Location;
+	UPROPERTY() FRotator Rotation = FRotator::ZeroRotator;
+	UPROPERTY() FVector_NetQuantize10 Velocity;
+	UPROPERTY() float Steer = 0.f;                 // road-wheel angle, degrees
+	UPROPERTY() float WheelOmega[4] = {0, 0, 0, 0}; // rad/s
+	UPROPERTY() float Compression[4] = {0, 0, 0, 0};
+	UPROPERTY() float Rpm = 0.f;
+	UPROPERTY() int8 Gear = 0;
+	UPROPERTY() float Time = 0.f;                 // owner's clock, s
+};
+
 class UCameraComponent;
 class UInputAction;
 class UInputMappingContext;
@@ -28,6 +45,7 @@ public:
 	ADriftCarPawn();
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	/** Car build to load from Content/DriftData/Cars/<CarSpec>.json (exported by Drift Lab). */
@@ -88,6 +106,12 @@ protected:
 
 private:
 	void LoadSpec();
+	void StartLocal();                  // first frame this machine drives the car
+	void SendNetState();
+	void ApplyRemote(float DeltaSeconds);
+	UFUNCTION(Server, Unreliable) void ServerSetState(const FDriftNetState& State);
+	UFUNCTION() void OnRep_NetState();
+	void PushSnapshot(const FDriftNetState& State);
 	bool LoadModel(const FString& ModelId);
 	void ResetCar(const FVector& Location, float Yaw);
 	void CreateInput();
@@ -108,6 +132,15 @@ private:
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
 	std::unique_ptr<FDriftWheel> Wheel;
 	std::unique_ptr<FDriftTelemetry> Telemetry;
+	bool bLocalStarted = false;
+	double NextNetSend = 0.0;
+	double NextNetLog = 0.0;
+	UPROPERTY(ReplicatedUsing = OnRep_NetState) FDriftNetState NetState;
+	struct FSnap { double Arrived; FDriftNetState S; };
+	TArray<FSnap> Snaps;                // remote cars: recent states, oldest first
+	double RemoteClockOffset = 0.0;     // their clock -> ours
+	bool bHaveClock = false;
+	float RemoteSpin[4] = {0, 0, 0, 0};
 	int32 CameraMode = 0;             // 0 chase, 1 cockpit, 2 hood
 	float CockpitVFov = 54.f;         // vertical degrees, like AC (owner: 54)
 	float HoodVFov = 54.f;

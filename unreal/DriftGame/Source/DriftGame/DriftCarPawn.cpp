@@ -27,14 +27,23 @@
 #include "drift/Json.h"
 #include "DriftGraphics.h"
 #include "DriftUE.h"
+#include "Net/UnrealNetwork.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogDrift, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogDriftNet, Log, All);
 
 ADriftCarPawn::ADriftCarPawn()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.TickGroup = TG_PrePhysics;
-	AutoPossessPlayer = EAutoReceiveInput::Player0;
+	// Multiplayer: each player's car is simulated on their own machine and its
+	// state replicated (FDriftNetState); Unreal's movement replication is off.
+	bReplicates = true;
+	SetReplicatingMovement(false);
+	bAlwaysRelevant = true;
+	SetNetUpdateFrequency(30.f);
+	// No AutoPossessPlayer: the game mode gives each player their car (with it
+	// set, every car spawned on a host grabbed the host's own controller).
 
 	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent = Root;
@@ -106,6 +115,13 @@ void ADriftCarPawn::BeginPlay()
 	Super::BeginPlay();
 	LoadSpec();
 	PhysWorld = std::make_unique<FDriftUnrealWorld>(GetWorld(), this);
+	// The rest needs to know this machine drives the car, which a joining
+	// client learns a moment after BeginPlay - see StartLocal.
+}
+
+void ADriftCarPawn::StartLocal()
+{
+	bLocalStarted = true;
 	ResetCar(GetActorLocation(), GetActorRotation().Yaw);
 	LastOnRoad = GetActorLocation();
 	LastOnRoadYaw = GetActorRotation().Yaw;
@@ -481,6 +497,20 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	{
 		return;
 	}
+	if (!IsLocallyControlled())
+	{
+		if (bLocalStarted)
+		{
+			UE_LOG(LogDriftNet, Warning, TEXT("%s was local, now controller=%s"), *GetName(), Controller ? *Controller->GetName() : TEXT("none"));
+			bLocalStarted = false;
+		}
+		ApplyRemote(DeltaSeconds);
+		return;
+	}
+	if (!bLocalStarted)
+	{
+		StartLocal();
+	}
 	ReadInput(DeltaSeconds);
 	Vehicle->Step(DeltaSeconds, *PhysWorld);
 	if (Vehicle->OnRoadWheels() >= 3)
@@ -499,6 +529,7 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	{
 		Telemetry->Sample(DeltaSeconds, *Vehicle, GetActorLocation());
 	}
+	SendNetState();
 	if (Wheel)
 	{
 		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()), static_cast<float>(Vehicle->FfbSpring()));
@@ -609,5 +640,155 @@ void ADriftCarPawn::OnFfbTest()
 	if (Wheel)
 	{
 		Wheel->RunTest();   // pulls left, then right
+	}
+}
+
+// --- Multiplayer -------------------------------------------------------------
+
+void ADriftCarPawn::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(ADriftCarPawn, NetState, COND_SkipOwner);
+}
+
+void ADriftCarPawn::SendNetState()
+{
+	if (GetNetMode() == NM_Standalone)
+	{
+		return;
+	}
+	const double Now = FPlatformTime::Seconds();
+	if (Now < NextNetSend)
+	{
+		return;
+	}
+	NextNetSend = Now + 1.0 / 30.0;
+	if (Now > NextNetLog)
+	{
+		NextNetLog = Now + 2.0;
+		UE_LOG(LogDriftNet, Verbose, TEXT("local %s at %s"), *GetName(), *GetActorLocation().ToCompactString());
+	}
+	FDriftNetState S;
+	S.Location = GetActorLocation();
+	S.Rotation = GetActorRotation();
+	S.Velocity = DriftUE::Dir(Vehicle->Velocity()) * 100.0;
+	S.Steer = FMath::RadiansToDegrees((Vehicle->Wheel(0).steer + Vehicle->Wheel(1).steer) * 0.5);
+	for (int32 I = 0; I < 4; ++I)
+	{
+		S.WheelOmega[I] = static_cast<float>(Vehicle->Wheel(I).omega);
+		S.Compression[I] = static_cast<float>(Vehicle->Wheel(I).compression);
+	}
+	S.Rpm = static_cast<float>(Vehicle->Rpm());
+	S.Gear = static_cast<int8>(Vehicle->Gear());
+	S.Time = static_cast<float>(Now);
+	if (HasAuthority())
+	{
+		NetState = S;   // host's own car: replicates to everyone else
+	}
+	else
+	{
+		ServerSetState(S);
+	}
+}
+
+void ADriftCarPawn::ServerSetState_Implementation(const FDriftNetState& State)
+{
+	NetState = State;        // on to the other clients
+	PushSnapshot(State);     // and shown on the host
+}
+
+void ADriftCarPawn::OnRep_NetState()
+{
+	PushSnapshot(NetState);
+}
+
+void ADriftCarPawn::PushSnapshot(const FDriftNetState& State)
+{
+	// Map the owner's clock onto ours with the smallest offset seen (the least
+	// delayed packet), so playback runs at their pace, not packet arrival.
+	const double Now = FPlatformTime::Seconds();
+	const double Offset = Now - State.Time;
+	if (!bHaveClock || Offset < RemoteClockOffset)
+	{
+		RemoteClockOffset = Offset;
+		bHaveClock = true;
+	}
+	else
+	{
+		RemoteClockOffset += (Offset - RemoteClockOffset) * 0.01;   // follow clock drift slowly
+	}
+	if (Snaps.Num() == 0)
+	{
+		UE_LOG(LogDriftNet, Log, TEXT("Receiving %s's car"), *GetName());
+	}
+	if (Snaps.Num() > 0 && State.Time <= Snaps.Last().S.Time)
+	{
+		return;   // out of order
+	}
+	Snaps.Add({State.Time + RemoteClockOffset, State});
+	if (Snaps.Num() > 30)
+	{
+		Snaps.RemoveAt(0, Snaps.Num() - 30);
+	}
+}
+
+void ADriftCarPawn::ApplyRemote(float DeltaSeconds)
+{
+	if (Snaps.Num() == 0 || !Vehicle)
+	{
+		return;
+	}
+	// Show other cars 100 ms in the past, between two received states; if the
+	// next one is late, carry on along the last velocity for up to 250 ms.
+	const double RenderAt = FPlatformTime::Seconds() - 0.1;
+	const FDriftNetState* A = &Snaps[0].S;
+	const FDriftNetState* B = nullptr;
+	double Alpha = 0.0;
+	for (int32 I = 0; I + 1 < Snaps.Num(); ++I)
+	{
+		if (Snaps[I].Arrived <= RenderAt && RenderAt <= Snaps[I + 1].Arrived)
+		{
+			A = &Snaps[I].S;
+			B = &Snaps[I + 1].S;
+			Alpha = (RenderAt - Snaps[I].Arrived) / FMath::Max(1e-4, Snaps[I + 1].Arrived - Snaps[I].Arrived);
+			break;
+		}
+		A = &Snaps[I + 1].S;
+	}
+	FVector Loc;
+	FQuat Rot;
+	float Steer;
+	if (B)
+	{
+		Loc = FMath::Lerp(FVector(A->Location), FVector(B->Location), Alpha);
+		Rot = FQuat::Slerp(A->Rotation.Quaternion(), B->Rotation.Quaternion(), Alpha);
+		Steer = FMath::Lerp(A->Steer, B->Steer, static_cast<float>(Alpha));
+	}
+	else
+	{
+		const double Ahead = FMath::Clamp(RenderAt - Snaps.Last().Arrived, 0.0, 0.25);
+		A = &Snaps.Last().S;
+		Loc = FVector(A->Location) + FVector(A->Velocity) * Ahead;
+		Rot = A->Rotation.Quaternion();
+		Steer = A->Steer;
+	}
+	SetActorLocationAndRotation(Loc, Rot);
+	if (FPlatformTime::Seconds() > NextNetSend)   // reused as a log timer on remote cars
+	{
+		NextNetSend = FPlatformTime::Seconds() + 2.0;
+		UE_LOG(LogDriftNet, Verbose, TEXT("remote %s at %s"), *GetName(), *Loc.ToCompactString());
+	}
+	for (int32 I = 0; I < 4; ++I)
+	{
+		const drift::WheelState& W = Vehicle->Wheel(I);
+		RemoteSpin[I] += A->WheelOmega[I] * DeltaSeconds;
+		const drift::Vec3 Centre = W.mount - drift::Vec3(0, W.travel - A->Compression[I], 0);
+		WheelHubs[I]->SetRelativeLocation(DriftUE::Pos(Centre));
+		WheelHubs[I]->SetRelativeRotation(FRotator(0.0, W.front ? Steer : 0.0, 0.0));
+		WheelMeshes[I]->SetRelativeRotation(FRotator(-FMath::RadiansToDegrees(RemoteSpin[I]), 0.0, 0.0).Quaternion() * WheelMeshBase);
+	}
+	if (bHasModel)
+	{
+		SteerMesh->SetRelativeRotation(FQuat(SteerAxis, FMath::DegreesToRadians(Steer) * SteerRatio) * ModelBase);
 	}
 }

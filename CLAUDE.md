@@ -59,6 +59,13 @@ vite files) is an unrelated web app.
   lateral g), handbrake per wheel, CG height = radius + BASEY (was a 0.45 m guess; Miata 0.175), AC TRACK
   kept over model wheel pivots, sliding friction along slip velocity. Understeer ~0.6-1.0 deg/g (AC 0.55). Next:
   no camber model (BDC front static camber -4.6 deg) - add camber + roll geometry from AC data.
+- AC replay scorer (`unreal/DriftCore/tools/ac_replay.cpp`, built with DriftCore): starts DriftCore in AC's
+  recorded state for 0.25 s windows with the recorded inputs. BDC Miata/Brooklyn: RMS 2.7 deg (baseline 8),
+  gain 0.93. AC shared memory updates at the frame rate (~64 Hz), not 100 Hz: old CSVs have fake t.
+- Graphics presets Low/Medium/High/Epic/VR (`DriftGraphics`, F5, `drift.Graphics N`).
+- Multiplayer (listen server): owner simulates own car, FDriftNetState replicated ~30 Hz (COND_SkipOwner),
+  remote cars interpolated 100 ms behind. No car-to-car collision yet. Host/Join .bat files in DriftGame/.
+  Tested with two -game -RenderOffscreen processes (logs: LogDriftNet Verbose). Pawn must NOT AutoPossess.
 - Headless UE runs fail with DXGI 887A002B (access denied) when the owner's display is off/away:
   add -RenderOffscreen.
 - Headless UE testing: `UnrealEditor.exe <uproject> -ExecCmds="py <script>"` (not -ExecutePythonScript,

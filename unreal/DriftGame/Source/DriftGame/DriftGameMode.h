@@ -11,4 +11,10 @@ class DRIFTGAME_API ADriftGameMode : public AGameModeBase
 
 public:
 	ADriftGameMode();
+
+	// Multiplayer: each new player starts beside/behind the last one, not on top.
+	virtual APawn* SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform) override;
+
+private:
+	int32 Spawned = 0;
 };
