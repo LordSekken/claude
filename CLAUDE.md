@@ -73,10 +73,11 @@ vite files) is an unrelated web app.
   needs the owner's editor closed (Live Coding blocks UBT).
 
 ## Roadmap agreed with the owner
-1. Done: Shinamoyama drivable, AC Miata model + physics, G920 + FFB (owner to verify). Next: graphics
-   presets + VR preset (Quest 2 + 3070 Ti, OpenXR), ACC-level road detail (close-up stones, Nanite
-   displacement), driver body/arms (paddles vs shifter vs handbrake), SDL gamepads (PS4/PS5/Switch/
-   8BitDo), gamepad steering polish (owner: low priority, wheel first).
+1. Done: Shinamoyama drivable, AC Miata model + physics (AC-replay matched), G920 + FFB, graphics
+   presets, multiplayer (listen server, car contact), VR prep (OpenXR; untested on the Quest 2), layered
+   road materials. Next: owner test drive of this batch; road realism (texture filtering, Nanite
+   displacement, tyre marks, lighting), driver body/arms, SDL gamepads (PS4/PS5/Switch/8BitDo),
+   Steam sessions instead of IP join, camber model if replay shows a need.
 2. AC importers: AC track (.kn5, Drift Lab already reads kn5) -> Unreal; AC car model + physics
    (Drift Lab `scripts/ac/ac_car_importer.gd` already reads unpacked data/*.ini) -> DriftCore spec.
 3. AC telemetry recorder + side-by-side comparison (same car/corner in AC vs DriftGame: slip angle,
