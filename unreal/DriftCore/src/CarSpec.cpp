@@ -40,6 +40,7 @@ void CarSpec::FromJsonValue(const JsonValue& root, CarSpec& c) {
 	c.name = v.Str("name", c.name);
 	c.mass = v.Num("mass", c.mass);
 	c.length = v.Num("length", c.length);
+	c.yaw_inertia_scale = v.Num("yaw_inertia_scale", c.yaw_inertia_scale);
 	c.width = v.Num("width", c.width);
 	c.height = v.Num("height", c.height);
 	c.wheelbase = v.Num("wheelbase", c.wheelbase);

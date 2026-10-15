@@ -26,3 +26,7 @@ add_executable(drift_tests tests/test_main.cpp)
 target_link_libraries(drift_tests PRIVATE DriftCore)
 target_compile_definitions(drift_tests PRIVATE DRIFT_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 add_test(NAME drift_tests COMMAND drift_tests)
+
+# Scores DriftCore against Assetto Corsa telemetry (drift-sim/native/actelemetry CSVs).
+add_executable(ac_replay tools/ac_replay.cpp)
+target_link_libraries(ac_replay PRIVATE DriftCore)

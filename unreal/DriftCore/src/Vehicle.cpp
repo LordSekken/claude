@@ -24,7 +24,7 @@ Vehicle::Vehicle(const CarSpec& spec) : spec_(spec) {
 	com_local_ = {0.0, spec_.cg_height - rmean, -L * 0.5 + spec_.com_from_front};
 	const double m = spec_.mass, w = spec_.width, h = spec_.height, l = spec_.length;
 	// Inertia of a uniform box (same convention as Assetto Corsa's INERTIA).
-	inertia_ = Vec3(m * (h * h + l * l) / 12.0, m * (w * w + l * l) / 12.0, m * (w * w + h * h) / 12.0);
+	inertia_ = Vec3(m * (h * h + l * l) / 12.0, m * (w * w + l * l) / 12.0 * spec_.yaw_inertia_scale, m * (w * w + h * h) / 12.0);
 	const double body_h = h * 0.62;
 	const double clearance = 0.14 + spec_.ride_offset * 0.6;
 	box_half_ = {w * 0.96 * 0.5, body_h * 0.5, l * 0.98 * 0.5};
@@ -66,6 +66,11 @@ void Vehicle::Reset(const Vec3& origin, const Mat3& rot) {
 	accumulator_ = 0.0;
 }
 
+void Vehicle::SetMotion(const Vec3& vel, const Vec3& ang_vel) {
+	vel_ = vel;
+	ang_vel_ = ang_vel;
+}
+
 Vec3 Vehicle::WheelCenterLocal(int i) const {
 	const WheelState& wh = wheels_[static_cast<size_t>(i)];
 	return wh.mount - Vec3(0, wh.travel - wh.compression, 0);
@@ -92,11 +97,11 @@ void Vehicle::ShiftDown() {
 	}
 }
 
-void Vehicle::SetGear(int gear) {
+void Vehicle::SetGear(int gear, bool instant) {
 	gear = gear < -1 ? -1 : (gear > GearCount() ? GearCount() : gear);
 	if (gear != gear_) {
 		gear_ = gear;
-		shift_timer_ = spec_.shift_time;
+		shift_timer_ = instant ? 0.0 : spec_.shift_time;
 	}
 }
 

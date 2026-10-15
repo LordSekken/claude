@@ -18,6 +18,7 @@ struct CarSpec {
 	std::string name = "Car";
 	double mass = 1300.0;
 	double length = 4.4, width = 1.75, height = 1.35;
+	double yaw_inertia_scale = 1.0;   // tuning: multiplies the box-formula yaw inertia
 	double wheelbase = 2.5;
 	double track_f = 1.48, track_r = 1.48;
 	double com_from_front = 1.2;   // m behind the front axle

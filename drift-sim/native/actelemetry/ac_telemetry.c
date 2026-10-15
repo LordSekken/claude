@@ -154,7 +154,7 @@ int main(void) {
 	LARGE_INTEGER freq, t0, now;
 	QueryPerformanceFrequency(&freq);
 	QueryPerformanceCounter(&t0);
-	double next_sample = 0, last_print = 0;
+	double next_sample = 0, last_print = 0, rec_t0 = 0;
 	for (;;) {
 		if (!phys.view && (!shm_open(&phys, "Local\\acpmf_physics") || !shm_open(&gfx, "Local\\acpmf_graphics") ||
 			!shm_open(&stat, "Local\\acpmf_static"))) {
@@ -172,7 +172,7 @@ int main(void) {
 			if (csv) {
 				fclose(csv);
 				csv = NULL;
-				printf("\nSaved %d samples (%.0f s) to\n  %s\n\n", rows, rows / 100.0, path);
+				printf("\nSaved %d samples (%.0f s) to\n  %s\n\n", rows, t - rec_t0, path);
 			}
 			if (g->status == 0 && t - last_print > 5) {   /* AC closed: release the maps */
 				shm_close(&phys); shm_close(&gfx); shm_close(&stat);
@@ -190,12 +190,14 @@ int main(void) {
 			printf("Recording %ls on %ls%s\n  -> %s\n", st->carModel, st->track,
 				extended ? "" : " (this AC build has no per-tyre forces; recording the rest)", path);
 		}
+		/* One row per new AC packet (AC refreshes at its frame rate, e.g. 60-144 Hz),
+		 * at most 100 Hz, stamped with the real time since recording started. */
 		if (t < next_sample || p->packetId == last_packet) { Sleep(1); continue; }
-		next_sample += 0.01;
-		if (next_sample < t) next_sample = t + 0.01;
+		next_sample = t + 0.0095;
 		last_packet = p->packetId;
+		if (rows == 0) rec_t0 = t;
 		fprintf(csv, "%.3f,%.2f,%d,%d,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.4f,%.4f,%.4f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f",
-			rows / 100.0, p->speedKmh, p->gear - 1, p->rpms, p->gas, p->brake, p->clutch, p->steerAngle, p->finalFF,
+			t - rec_t0, p->speedKmh, p->gear - 1, p->rpms, p->gas, p->brake, p->clutch, p->steerAngle, p->finalFF,
 			p->heading, p->pitch, p->roll, p->localVelocity[0], p->localVelocity[1], p->localVelocity[2],
 			p->localAngularVel[1], p->localAngularVel[0], p->localAngularVel[2], p->accG[0], p->accG[1], p->accG[2],
 			g->carCoordinates[0], g->carCoordinates[1], g->carCoordinates[2]);
@@ -213,7 +215,7 @@ int main(void) {
 			last_print = t;
 			double drift = 0;
 			if (fabs(p->localVelocity[2]) > 1.0) drift = atan2(p->localVelocity[0], p->localVelocity[2]) * 57.2958;
-			printf("\r  %5.0f s  %3.0f km/h  gear %d  drift %+4.0f deg  FFB %+.2f     ", rows / 100.0, p->speedKmh, p->gear - 1, drift, p->finalFF);
+			printf("\r  %5.0f s  %3.0f km/h  gear %d  drift %+4.0f deg  FFB %+.2f     ", t - rec_t0, p->speedKmh, p->gear - 1, drift, p->finalFF);
 			fflush(stdout);
 		}
 	}

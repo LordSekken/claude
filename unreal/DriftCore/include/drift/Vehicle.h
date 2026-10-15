@@ -96,6 +96,11 @@ public:
 	// Places the body origin (axle height, midway between the axles) at
 	// `origin` with orientation `rot`, at rest.
 	void Reset(const Vec3& origin, const Mat3& rot);
+	// Analysis/replay: put the car in a given motion (world frame), wheel spin
+	// (rad/s, + = rolling forward) and engine speed. Pose and suspension stay.
+	void SetMotion(const Vec3& vel, const Vec3& ang_vel);
+	void SetWheelOmega(int i, double omega) { wheels_[static_cast<size_t>(i)].omega = omega; }
+	void SetEngineRpm(double rpm) { engine_omega_ = rpm * kTau / 60.0; }
 	// Advances by dt seconds in fixed internal steps. Returns steps taken.
 	int Step(double dt, World& world);
 
@@ -134,7 +139,7 @@ public:
 
 	void ShiftUp();
 	void ShiftDown();
-	void SetGear(int gear);   // H-shifter: -1 R, 0 N, 1..GearCount()
+	void SetGear(int gear, bool instant = false);   // H-shifter: -1 R, 0 N, 1..GearCount(); instant = no shift delay (replay)
 	double EngineTorque(double rpm, double throttle) const;
 
 private:
