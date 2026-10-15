@@ -31,7 +31,25 @@ Vec2 TireModel::Compute(double slip_ratio, double slip_angle, double fz, double 
 		c += (1.0 - c) * 0.55 * wl;
 	}
 	double f = c * fz * LoadMuScale(fz) * grip;
-	return {p_.mu_long * f * sx / s, -p_.mu_lat * f * sy / s};
+	// Force direction: below the peak, split by how close each slip is to its own
+	// peak; once sliding, friction opposes the actual sliding velocity (spin
+	// kappa vs side slip tan(alpha)). Without this a spinning rear (kappa far past
+	// its tiny 0.1 peak) put nearly all its grip into drive and almost none into
+	// holding the car sideways, so drifts accelerated out and straightened.
+	double dx = sx / s, dy = sy / s;
+	if (s > 1.0) {
+		const double px = slip_ratio, py = std::tan(Clamp(slip_angle, -1.4, 1.4));
+		const double pl = std::sqrt(px * px + py * py);
+		if (pl > 1e-6) {
+			const double w = Clamp((s - 1.0) / 1.5, 0.0, 1.0);
+			dx = dx + (px / pl - dx) * w;
+			dy = dy + (py / pl - dy) * w;
+			const double dl = std::sqrt(dx * dx + dy * dy);
+			dx /= dl;
+			dy /= dl;
+		}
+	}
+	return {p_.mu_long * f * dx, -p_.mu_lat * f * dy};
 }
 
 }  // namespace drift

@@ -24,7 +24,7 @@ Vehicle::Vehicle(const CarSpec& spec) : spec_(spec) {
 	com_local_ = {0.0, spec_.cg_height - rmean, -L * 0.5 + spec_.com_from_front};
 	const double m = spec_.mass, w = spec_.width, h = spec_.height, l = spec_.length;
 	// Inertia of a uniform box (same convention as Assetto Corsa's INERTIA).
-	inertia_ = Vec3(m * (h * h + l * l) / 12.0, m * (w * w + l * l) / 12.0, m * (w * w + h * h) / 12.0) * 0.9;
+	inertia_ = Vec3(m * (h * h + l * l) / 12.0, m * (w * w + l * l) / 12.0, m * (w * w + h * h) / 12.0);
 	const double body_h = h * 0.62;
 	const double clearance = 0.14 + spec_.ride_offset * 0.6;
 	box_half_ = {w * 0.96 * 0.5, body_h * 0.5, l * 0.98 * 0.5};

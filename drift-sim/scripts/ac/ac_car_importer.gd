@@ -108,7 +108,8 @@ static func import_folder(dir: String) -> Dictionary:
 		"steer_lock_deg": road_lock, "max_steer_lock_deg": maxf(road_lock, 68.0),
 		"brake_torque_nm": AcIni.f(brk, "DATA", "MAX_TORQUE", 3000.0) * 2.0,
 		"brake_bias_front": AcIni.f(brk, "DATA", "FRONT_SHARE", 0.65),
-		"handbrake_torque_nm": AcIni.f(brk, "DATA", "HANDBRAKE_TORQUE", 1000.0),
+		# AC brake torques are per wheel; Drift Lab/DriftCore store the axle total.
+		"handbrake_torque_nm": AcIni.f(brk, "DATA", "HANDBRAKE_TORQUE", 500.0) * 2.0,
 		"cd": 0.34, "frontal_area_m2": w * h * 0.82,
 		"suspension": {
 			"spring_front_n_mm": AcIni.f(sus, "FRONT", "SPRING_RATE", 60000.0) / 1000.0,

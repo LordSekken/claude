@@ -189,6 +189,7 @@ func test_ac_import() -> void:
 		check(absf(float(tf.get("mu_lat", 0)) - 1.225) < 0.001 and absf(float(tr.get("mu_lat", 0)) - 1.125) < 0.001,
 			"AC default compound, DY0+DY1*3.5kN: front %s rear %s" % [tf.get("mu_lat"), tr.get("mu_lat")])
 		check(float(tf.get("peak_slip_angle_deg", 0)) == 11.7, "AC compound peak slip angle")
+		check(absf(float(res.spec.handbrake_torque) - 5200.0) < 1.0, "AC HANDBRAKE_TORQUE is per wheel: %s" % res.spec.handbrake_torque)
 		check(float(res.spec.tire_f.mu_lat) > float(res.spec.tire_r.mu_lat), "front grippier than rear, as in the AC file")
 		check(float(res.stats.peak_hp) > 150.0 and float(res.stats.peak_hp) < 360.0, "AC turbo engine power plausible (%s)" % res.stats.peak_hp)
 
