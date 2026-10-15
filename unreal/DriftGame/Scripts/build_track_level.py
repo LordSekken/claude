@@ -332,6 +332,13 @@ def set_default_map(level_path):
 
 def build(folder):
     track_id, meshes = import_track(folder)
+    info = {}
+    info_path = os.path.join(folder, "track.json")
+    if os.path.exists(info_path):
+        with open(info_path) as f:
+            info = json.load(f)
+    # Assetto Corsa tracks keep their own textures (keep_materials).
+    keep_materials = bool(info.get("keep_materials", False))
     level_path = "/Game/Maps/" + track_id
     les, eas = open_fresh_level(level_path)
     markers = {}
@@ -341,8 +348,8 @@ def build(folder):
         if upper.endswith("START_AHEAD") or upper.endswith("START"):
             markers["ahead" if upper.endswith("START_AHEAD") else "start"] = mesh.get_bounds().origin
             continue
-        # Trees and painted lines are visual only (lines sit 1 cm above the road).
-        visual_only = "TREE" in upper or "LINE" in upper
+        # Trees, painted lines and AC scenery chunks (VIS_*) are visual only.
+        visual_only = "TREE" in upper or "LINE" in upper or upper.startswith("VIS")
         set_collision(mesh, not visual_only)
         actor = eas.spawn_actor_from_object(mesh, unreal.Vector(0, 0, 0), unreal.Rotator())
         actor.set_actor_label(name)
@@ -354,10 +361,16 @@ def build(folder):
             comp.set_collision_profile_name("NoCollision")
             remove_simple_collision(mesh)
             continue
+        if "HIDDEN" in upper:
+            # AC physics-only surface (e.g. the invisible wall around a track):
+            # collides, never drawn.
+            comp.set_visibility(False)
+            comp.set_editor_property("hidden_in_game", True)
+            actor.set_actor_hidden_in_game(True)
         surf = surface_of(name)
         if surf:
             comp.component_tags = [unreal.Name(surf)]
-            mat = material_for(surf)
+            mat = None if keep_materials else material_for(surf)
             if mat:
                 for i in range(comp.get_num_materials()):
                     comp.set_material(i, mat)

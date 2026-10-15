@@ -146,12 +146,15 @@ func _mesh() -> MeshInstance3D:
 	var idx := f.get_buffer(icount * 2)
 	var mat_id := f.get_32()
 	f.get_32()  # layer
-	f.get_float()  # lod in
-	f.get_float()  # lod out
+	var lod_in := f.get_float()   # AC draws this mesh only between these distances (m)
+	var lod_out := f.get_float()
 	f.get_buffer(16)  # bounding sphere
-	f.get_8()  # renderable
+	var renderable := f.get_8() != 0   # false = physics-only mesh (tracks)
 	var mi := _build_mesh(raw, 11, vcount, idx, icount, mat_id)
 	mi.visible = visible
+	mi.set_meta("ac_renderable", renderable)
+	mi.set_meta("ac_lod_in", lod_in)
+	mi.set_meta("ac_lod_out", lod_out)
 	return mi
 
 

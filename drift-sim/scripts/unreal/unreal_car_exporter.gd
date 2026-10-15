@@ -14,7 +14,7 @@ extends RefCounted
 ## the meshes and textures are the car author's.
 
 const WHEELS := AcCarModel.WHEELS  # LF, RF, LR, RR = DriftCore wheel order
-const MAX_TEX := 4096
+static var max_tex := 4096   # tracks export smaller (many more textures)
 
 
 static func export_car(car_dir: String, project_dir: String, skin := "", base_build := "miata_na_bp_turbo") -> Dictionary:
@@ -188,6 +188,13 @@ static func _gltf_material(mat: Material, tex_cache: Dictionary) -> Material:
 		m.cull_mode = s.cull_mode
 		m.emission_enabled = s.emission_enabled
 		m.emission = s.emission
+		# AC often enables alpha test through the shader (ksTree, ksGrass, *AT)
+		# rather than the material flag: a "solid" material whose texture is
+		# largely see-through is a cut-out (fences, foliage), not a white quad.
+		if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and m.albedo_texture and float(tex_cache.get("clear_%d" % m.albedo_texture.get_instance_id(), 0.0)) > 0.05:
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			m.alpha_scissor_threshold = 0.5
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	m.resource_name = mat.resource_name if mat else ""
 	return m
 
@@ -205,10 +212,21 @@ static func _plain(tex: Variant, cache: Dictionary) -> Texture2D:
 		if img.is_compressed():
 			img.decompress()
 		img.clear_mipmaps()
-		if img.get_width() > MAX_TEX or img.get_height() > MAX_TEX:
-			var k := float(MAX_TEX) / maxf(img.get_width(), img.get_height())
+		if img.get_width() > max_tex or img.get_height() > max_tex:
+			var k := float(max_tex) / maxf(img.get_width(), img.get_height())
 			img.resize(int(img.get_width() * k), int(img.get_height() * k), Image.INTERPOLATE_LANCZOS)
 		out = ImageTexture.create_from_image(img)
+		# Share of clearly transparent pixels (sampled), for cut-out detection.
+		var clear := 0
+		var total := 0
+		if img.detect_alpha() != Image.ALPHA_NONE:
+			var step := maxi(1, img.get_width() / 64)
+			for y in range(0, img.get_height(), step):
+				for x in range(0, img.get_width(), step):
+					total += 1
+					if img.get_pixel(x, y).a < 0.5:
+						clear += 1
+		cache["clear_%d" % out.get_instance_id()] = float(clear) / maxf(total, 1.0)
 	cache[key] = out
 	return out
 
