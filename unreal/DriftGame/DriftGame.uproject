@@ -8,12 +8,32 @@
 			"Name": "DriftGame",
 			"Type": "Runtime",
 			"LoadingPhase": "Default",
-			"AdditionalDependencies": ["Engine", "EnhancedInput"]
+			"AdditionalDependencies": [
+				"Engine",
+				"EnhancedInput"
+			]
 		}
 	],
 	"Plugins": [
-		{ "Name": "EnhancedInput", "Enabled": true },
-		{ "Name": "PythonScriptPlugin", "Enabled": true },
-		{ "Name": "EditorScriptingUtilities", "Enabled": true }
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "EditorScriptingUtilities",
+			"Enabled": true
+		},
+		{
+			"Name": "OpenXR",
+			"Enabled": true
+		},
+		{
+			"Name": "XRBase",
+			"Enabled": true
+		}
 	]
 }

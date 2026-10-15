@@ -4,6 +4,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/BoxComponent.h"
+#include "HeadMountedDisplayFunctionLibrary.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -138,6 +139,14 @@ void ADriftCarPawn::StartLocal()
 	Wheel = std::make_unique<FDriftWheel>();
 	Wheel->Start();
 	GraphicsPreset = DriftGraphics::Saved();
+	if (UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled())
+	{
+		// VR: sit in the cockpit (the headset moves the camera) and use the VR
+		// preset - two eyes at Quest 2 resolution need the lighter settings.
+		GraphicsPreset = DriftGraphics::VR;
+		SetCamera(1);
+		UHeadMountedDisplayFunctionLibrary::ResetOrientationAndPosition();
+	}
 	DriftGraphics::Apply(GraphicsPreset, false);
 	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("CockpitVFov"), CockpitVFov, GGameIni);
 	GConfig->GetFloat(TEXT("DriftCamera"), TEXT("HoodVFov"), HoodVFov, GGameIni);

@@ -7,7 +7,7 @@ public class DriftGame : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 		PublicDependencyModuleNames.AddRange(new string[] {
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "PhysicsCore", "Sockets", "Networking"
+			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "PhysicsCore", "Sockets", "Networking", "HeadMountedDisplay", "XRBase"
 		});
 		// DriftCore (engine-independent physics) lives next to this project:
 		// unreal/DriftCore. Its sources are compiled into this module by
