@@ -396,6 +396,35 @@ void TestStallRestart() {
 	CHECK(v.Rpm() > v.Spec().idle_rpm * 0.8, "restarted: %g rpm", v.Rpm());
 }
 
+// A world with one flat floor plus a fixed overlap against "another car".
+class CarContactWorld : public FlatWorld {
+public:
+	Vec3 other_vel;
+	void BodyContacts(const Vec3& center, const Mat3&, const Vec3&, std::vector<BodyContact>& out) override {
+		BodyContact c;
+		c.point = center + Vec3(0.8, 0, 0);
+		c.normal = Vec3(-1, 0, 0);   // pushed to the left
+		c.depth = 0.01;
+		c.wall = false;
+		c.other_vel = other_vel;
+		c.other_mass = 1200.0;
+		out.push_back(c);
+	}
+};
+
+void TestCarContact() {
+	// Side by side at the same speed: no bounce. Other car sliding into us: we get pushed.
+	for (int moving = 0; moving < 2; ++moving) {
+		CarContactWorld w;
+		Vehicle v = Settled(TestCar(), w, 0.5);
+		w.other_vel = moving ? Vec3(-4.0, 0, 0) : Vec3(0, 0, 0);
+		Run(0.05, v, w);
+		const double side = v.Velocity().x;
+		if (moving) CHECK(side < -0.5, "car sliding into us pushes us sideways: %g m/s", side);
+		else CHECK(std::fabs(side) < 0.5, "touching a stationary car barely moves us: %g m/s", side);
+	}
+}
+
 void TestSetGear() {
 	Vehicle v(TestCar());
 	v.SetGear(3);
@@ -453,6 +482,7 @@ int main() {
 		{"ffb drift self-steer", TestFfbDriftSelfSteer},
 		{"ffb light on centre", TestFfbLightOnCentre},
 		{"stall restart", TestStallRestart},
+		{"car contact", TestCarContact},
 		{"set gear", TestSetGear},
 		{"example specs", TestExampleSpecs},
 	};

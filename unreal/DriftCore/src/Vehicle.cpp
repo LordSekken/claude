@@ -206,14 +206,16 @@ void Vehicle::ResolveContacts(World& world) {
 		if (c.depth <= 0.0) continue;
 		Vec3 n = c.normal.Normalized();
 		if (c.wall) wall_contact_ = true;
+		// Our share of a car-car contact (the other car resolves its own).
+		const double share = c.other_mass > 0.0 ? c.other_mass / (c.other_mass + spec_.mass) : 1.0;
 		// Push out of the obstacle (most of the penetration per step).
-		com_ += n * (c.depth * 0.8);
+		com_ += n * (c.depth * 0.8 * share);
 		Vec3 r = c.point - com_;
-		Vec3 vp = vel_ + ang_vel_.Cross(r);
+		Vec3 vp = vel_ + ang_vel_.Cross(r) - c.other_vel;
 		double vn = vp.Dot(n);
 		if (vn >= 0.0) continue;
 		const double e = 0.15;
-		double k = 1.0 / spec_.mass + n.Dot(InvInertiaWorld(r.Cross(n)).Cross(r));
+		double k = 1.0 / spec_.mass + n.Dot(InvInertiaWorld(r.Cross(n)).Cross(r)) + (c.other_mass > 0.0 ? 1.0 / c.other_mass : 0.0);
 		double j = -(1.0 + e) * vn / k;
 		Vec3 impulse = n * j;
 		// Friction (scraping along the wall).

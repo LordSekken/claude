@@ -35,6 +35,7 @@ class UInputAction;
 class UInputMappingContext;
 class USpringArmComponent;
 class UStaticMeshComponent;
+class UBoxComponent;
 
 UCLASS()
 class DRIFTGAME_API ADriftCarPawn : public APawn
@@ -80,6 +81,10 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Drift")
 	TObjectPtr<UStaticMeshComponent> SteerMesh;
 
+	/** Other cars' DriftCore bodies collide with this (query-only, ECC_Vehicle). */
+	UPROPERTY(VisibleAnywhere, Category = "Drift")
+	TObjectPtr<UBoxComponent> CarCollision;
+
 	UPROPERTY(VisibleAnywhere, Category = "Drift")
 	TObjectPtr<USpringArmComponent> ChaseArm;
 
@@ -97,6 +102,9 @@ public:
 	const drift::Vehicle* GetVehicle() const { return Vehicle.get(); }
 	FString GetCarName() const { return CarName; }
 	const FDriftWheel* GetWheel() const { return Wheel.get(); }
+	/** Current velocity in cm/s - simulated (own car) or interpolated (others). */
+	FVector GetCarVelocity() const;
+	double GetCarMass() const;
 	int32 GetGraphicsPreset() const { return GraphicsPreset; }
 	double GetGraphicsShownUntil() const { return GraphicsShownUntil; }
 
@@ -141,6 +149,7 @@ private:
 	double RemoteClockOffset = 0.0;     // their clock -> ours
 	bool bHaveClock = false;
 	float RemoteSpin[4] = {0, 0, 0, 0};
+	FVector RemoteVelocity = FVector::ZeroVector;
 	int32 CameraMode = 0;             // 0 chase, 1 cockpit, 2 hood
 	float CockpitVFov = 54.f;         // vertical degrees, like AC (owner: 54)
 	float HoodVFov = 54.f;

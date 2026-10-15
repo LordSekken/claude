@@ -40,6 +40,10 @@ struct BodyContact {
 	Vec3 normal;
 	double depth = 0.0;
 	bool wall = true;
+	// Another car (multiplayer): its velocity at the contact and mass. Each
+	// side resolves only its own car, so the push is shared by mass.
+	Vec3 other_vel;
+	double other_mass = 0.0;   // 0 = immovable (walls)
 };
 
 class World {

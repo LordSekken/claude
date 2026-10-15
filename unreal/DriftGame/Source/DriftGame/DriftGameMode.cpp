@@ -2,6 +2,7 @@
 
 #include "DriftCarPawn.h"
 #include "DriftHUD.h"
+#include "Misc/ConfigCacheIni.h"
 
 ADriftGameMode::ADriftGameMode()
 {
@@ -16,6 +17,8 @@ APawn* ADriftGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* N
 	const FVector Right = SpawnTransform.GetRotation().GetRightVector();
 	const FVector Back = -SpawnTransform.GetRotation().GetForwardVector();
 	FTransform T = SpawnTransform;
-	T.AddToTranslation(Right * ((N % 2) ? 350.0 : 0.0) + Back * (N / 2) * 800.0);
+	float Side = 350.f;
+	GConfig->GetFloat(TEXT("DriftMultiplayer"), TEXT("GridSide"), Side, GGameIni);
+	T.AddToTranslation(Right * ((N % 2) ? Side : 0.0) + Back * (N / 2) * 800.0);
 	return Super::SpawnDefaultPawnAtTransform_Implementation(NewPlayer, T);
 }

@@ -3,6 +3,7 @@
 #include <string>
 
 #include "Camera/CameraComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -82,6 +83,13 @@ ADriftCarPawn::ADriftCarPawn()
 		SuspMeshes.Add(Susp);
 	}
 	WheelMeshBase = FRotator(0.f, 0.f, 90.f).Quaternion();
+
+	CarCollision = CreateDefaultSubobject<UBoxComponent>(TEXT("CarCollision"));
+	CarCollision->SetupAttachment(Root);
+	CarCollision->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	CarCollision->SetCollisionObjectType(ECC_Vehicle);
+	CarCollision->SetCollisionResponseToAllChannels(ECR_Ignore);
+	CarCollision->SetGenerateOverlapEvents(false);
 
 	SteerMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("SteeringWheel"));
 	SteerMesh->SetupAttachment(Root);
@@ -213,6 +221,11 @@ void ADriftCarPawn::LoadSpec()
 	CarName = UTF8_TO_TCHAR(Spec.name.c_str());
 	Vehicle = std::make_unique<drift::Vehicle>(Spec);
 	CockpitCamera->SetRelativeLocation(DriftUE::Pos(Vehicle->SeatLocal()));
+	{
+		const drift::Vec3 Half = Vehicle->CollisionHalfExtents();
+		CarCollision->SetRelativeLocation(DriftUE::Pos(Vehicle->CollisionCenterLocal()));
+		CarCollision->SetBoxExtent(FVector(Half.z, Half.x, Half.y) * 100.0);
+	}
 	if (!bHoodSet)
 	{
 		// No model: centreline, a bit below eye height, ~1.1 m ahead of the seat.
@@ -773,6 +786,7 @@ void ADriftCarPawn::ApplyRemote(float DeltaSeconds)
 		Steer = A->Steer;
 	}
 	SetActorLocationAndRotation(Loc, Rot);
+	RemoteVelocity = FVector(B ? FMath::Lerp(FVector(A->Velocity), FVector(B->Velocity), Alpha) : FVector(A->Velocity));
 	if (FPlatformTime::Seconds() > NextNetSend)   // reused as a log timer on remote cars
 	{
 		NextNetSend = FPlatformTime::Seconds() + 2.0;
@@ -791,4 +805,18 @@ void ADriftCarPawn::ApplyRemote(float DeltaSeconds)
 	{
 		SteerMesh->SetRelativeRotation(FQuat(SteerAxis, FMath::DegreesToRadians(Steer) * SteerRatio) * ModelBase);
 	}
+}
+
+FVector ADriftCarPawn::GetCarVelocity() const
+{
+	if (Vehicle && IsLocallyControlled())
+	{
+		return DriftUE::Dir(Vehicle->Velocity()) * 100.0;
+	}
+	return RemoteVelocity;
+}
+
+double ADriftCarPawn::GetCarMass() const
+{
+	return Vehicle ? Vehicle->Spec().mass : 1200.0;
 }

@@ -1,5 +1,7 @@
 #include "DriftUnrealWorld.h"
 
+#include "DriftCarPawn.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/StaticMesh.h"
@@ -112,7 +114,10 @@ void FDriftUnrealWorld::BodyContacts(const drift::Vec3& Center, const drift::Mat
 	const FCollisionShape Box = FCollisionShape::MakeBox(FVector(HalfExtents.z, HalfExtents.x, HalfExtents.y) * 100.0);
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(DriftBody), false, Ignore);
 	TArray<FOverlapResult> Overlaps;
-	if (!World->OverlapMultiByObjectType(Overlaps, UCenter, UQuat, TrackObjects(), Box, Params))
+	// The track, plus other cars' collision boxes (ECC_Vehicle; wheels' raycasts ignore them).
+	FCollisionObjectQueryParams Objects = TrackObjects();
+	Objects.AddObjectTypesToQuery(ECC_Vehicle);
+	if (!World->OverlapMultiByObjectType(Overlaps, UCenter, UQuat, Objects, Box, Params))
 	{
 		return;
 	}
@@ -140,6 +145,12 @@ void FDriftUnrealWorld::BodyContacts(const drift::Vec3& Center, const drift::Mat
 			C.point -= Axes[K] * (Half[K] * drift::Sign(Axes[K].Dot(C.normal)));
 		}
 		C.wall = C.normal.y < 0.7;
+		if (const ADriftCarPawn* Other = Cast<ADriftCarPawn>(Comp->GetOwner()))
+		{
+			C.wall = false;
+			C.other_vel = DriftUE::CoreDir(Other->GetCarVelocity()) * 0.01;
+			C.other_mass = Other->GetCarMass();
+		}
 		Out.push_back(C);
 	}
 }
