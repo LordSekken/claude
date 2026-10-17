@@ -118,6 +118,14 @@ int main(int argc, char** argv) {
 		bool same_gear = true;
 		for (int k = 0; k < n; ++k) same_gear &= rows[i + k]["gear"] == a["gear"];
 		if (!same_gear) continue;
+		// Skip AC glitches: car reset/teleported or the recording paused inside the window.
+		bool glitch = b["speed_kmh"] < 3;
+		for (int k = 1; k <= n && !glitch; ++k) {
+			const Row& p = rows[i + k - 1];
+			const Row& q = rows[i + k];
+			glitch = std::hypot(q["pos_x"] - p["pos_x"], q["pos_z"] - p["pos_z"]) > 3 * row_dt * p["speed_kmh"] / 3.6 + 0.5;
+		}
+		if (glitch) continue;
 		Vehicle v = base;
 		v.in.direct_steer = true;
 		v.in.steering_assist = 0;

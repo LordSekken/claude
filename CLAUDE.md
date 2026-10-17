@@ -86,6 +86,42 @@ vite files) is an unrelated web app.
 4. Later ideas (not active): own-city tracks from OSM / Gaussian splats (AKASO EK7000 footage),
    traffic, road/roundabout maker.
 
+### Owner's vision (2026-10-17) - priority order
+- Product: a modern, buy-download-play drift sim (no modding needed) with physics realistic enough that
+  sim min-maxers (friends Corey, John) prefer it; drift first, then rally stages / GT tracks (Monza, Spa)
+  reuse the same "just realistic" physics. Multiplayer with friends is the point. VR that looks good and
+  runs well (AC/ACC run badly in VR).
+- Physics tuning philosophy (owner agreed): make each component physically right (geometry, mass, springs,
+  published tyre data) and validate with standard manoeuvres (skidpad, step steer, sine sweep, braking,
+  power oversteer) and ideally real-car phone GPS/IMU logs; AC telemetry is a cross-check, not the target
+  (matching one log can hide cancelling errors). Tyres must have real ground contact (not soft-body FEA).
+- Cameras: cockpit, cockpit-forward (wheel + dash), hood, bumper/grille, two chase, sideways drift cam;
+  NeckFX (head-tracking plugin) support.
+- Player models/skins (cel-shaded characters OK, e.g. Goku animated at 12-18 fps), rewind, photo mode.
+- Later: AI car builder from service manual + spec sheet; soft-body crash damage (BeamNG-like);
+  more Forza telemetry / FH5 & FH Japan drift zones; procedural drift-map generator (needs a model of
+  what makes drift corner sequences fun).
+- Test map: Brooklyn Park (not the personal Forza tracks).
+
+### Chrono evaluation (started 2026-10-17)
+- Chrono 10.0.0 at `C:\Dev\chrono` (local patch: ChPac02Tire.cpp slip clamp removed so Fy/Fx fall off
+  past the peak), built Release core+vehicle in `C:\Dev\chrono_build` (Eigen 3.4.0 + CMake 4.4.4 in
+  `C:\Dev\tools`). `drift-sim/tools/ac_to_chrono.py` converts an AC car + Drift Lab spec into Chrono JSON
+  (double wishbones from AC hardpoints, static camber, Pac02 .tir scaled to AC grip) in `C:\Dev\chrono_cars`
+  (not in git). `unreal/ChronoLab` (`chrono_lab perf|skidpad|replay|diag|reset`) - build dir `C:\Dev\chrono_lab_build`.
+- Patch: `unreal/ChronoLab/chrono-10.0.0-pac02-falloff.patch` (apply to a fresh Chrono checkout).
+- Solver: BARZILAIBORWEIN (100 it) for stepping - clutches/brakes are boxed (friction) constraints that a
+  direct solver ignores (SPARSE_LU locked the clutch). SPARSE_LU only for the replay state reset (exact
+  assembly). Reset must: re-aim the steering actuator + POSITION assembly, set wheel spins (+ about vehicle
+  +Y = forward) and every ShaftBodyRotation shaft, iterate VELOCITY assembly + vehicle Synchronize (the
+  gearbox driveshaft is kinematic), set gearbox input = output / ratio, and never rewind ChTime.
+- Miata: 3.5x real time at 1 kHz on one core (~0.29 ms/step). Skidpad understeer 0.13 deg/g (AC 0.55).
+  Steering lock calibrated to AC (`--calibrate=`; rack is non-linear). AC replay (Brooklyn, 1671 windows,
+  glitch-filtered): Chrono untuned RMS 1.69 deg, corr 0.98, gain 1.07 (rotates ~1 deg more), speed -1 km/h
+  per window at full gas; DriftCore (tuned to AC) RMS 1.11, corr 0.99, gain 1.02. Missing in the Chrono car:
+  rolling resistance (old-format .tir), turbo boost map, camber effect on grip (PDY3=0), relaxation length.
+- AC importer mass fixed: TOTALMASS includes the driver, + fuel x 0.74 (was -75 kg).
+
 ## Forza / track inference notes
 FH packets 324 bytes, dash block at 244. SurfaceRumble per wheel at 148-160 (0 tarmac, 0.12 rough,
 0.24 kerb). Forza world is mirrored vs Godot (mirror x). Track inference (`forza_session.gd`) bins

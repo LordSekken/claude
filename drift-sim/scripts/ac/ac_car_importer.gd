@@ -105,7 +105,8 @@ static func import_folder(dir: String) -> Dictionary:
 		cg_height = clampf(wf * (radius + AcIni.f(sus, "FRONT", "BASEY", 0.0)) + (1.0 - wf) * (r_rear + AcIni.f(sus, "REAR", "BASEY", 0.0)), 0.1, 1.0)
 	var chassis := {
 		"id": car_id, "name": name, "make": brand, "year": year, "body_style": "coupe", "color": "#c8c8c8",
-		"mass_kg": AcIni.f(car, "BASIC", "TOTALMASS", 1300.0) - 75.0,
+		# AC: TOTALMASS includes the driver; the tank adds ~0.74 kg per litre of starting fuel.
+		"mass_kg": AcIni.f(car, "BASIC", "TOTALMASS", 1300.0) + AcIni.f(car, "FUEL", "FUEL", 0.0) * 0.74,
 		"stock_drivetrain": traction, "stock_engine": engine.id, "stock_transmission": trans.id,
 		"wheelbase_m": AcIni.f(sus, "BASIC", "WHEELBASE", 2.5),
 		"track_front_m": AcIni.f(sus, "FRONT", "TRACK", 1.5), "track_rear_m": AcIni.f(sus, "REAR", "TRACK", 1.5),
