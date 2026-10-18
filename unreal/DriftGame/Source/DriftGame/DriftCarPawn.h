@@ -1,4 +1,4 @@
-// The player's car. DriftCore simulates it (480 Hz, its own rigid body);
+// The player's car. Project Chrono (DriftChronoBackend) or DriftCore simulates it;
 // this actor just feeds it input and the level, then places the body,
 // wheels and cameras where the simulation says.
 #pragma once
@@ -11,6 +11,7 @@
 #include "DriftUnrealWorld.h"
 #include "DriftTelemetry.h"
 #include "DriftWheel.h"
+#include "DriftChronoBackend.h"
 #include "DriftCarPawn.generated.h"
 
 /** What other players see of a car: sent ~30x/s by its owner, interpolated elsewhere. */
@@ -106,6 +107,10 @@ public:
 	FVector GetCarVelocity() const;
 	double GetCarMass() const;
 	int32 GetGraphicsPreset() const { return GraphicsPreset; }
+	/** "Chrono" or "DriftCore", and the physics time of the last frame. */
+	FString GetPhysicsName() const { return Chrono ? TEXT("Chrono") : TEXT("DriftCore"); }
+	double GetPhysicsMs() const { return Chrono ? Chrono->LastStepMs() : 0.0; }
+	double GetPhysicsShownUntil() const { return PhysicsShownUntil; }
 	double GetGraphicsShownUntil() const { return GraphicsShownUntil; }
 
 protected:
@@ -135,11 +140,16 @@ private:
 	void OnToggleAutoShift();
 	void OnFfbTest();
 	void OnCycleGraphics();
+	void OnTogglePhysics();
+	bool StartChrono();                 // false = stays on DriftCore (logged)
 
 	std::unique_ptr<drift::Vehicle> Vehicle;
 	std::unique_ptr<FDriftUnrealWorld> PhysWorld;
 	std::unique_ptr<FDriftWheel> Wheel;
 	std::unique_ptr<FDriftTelemetry> Telemetry;
+	TUniquePtr<FDriftChrono> Chrono;    // Project Chrono physics; null = DriftCore
+	double PhysicsShownUntil = 0.0;
+	double NextPhysicsLog = 0.0;
 	bool bLocalStarted = false;
 	double NextNetSend = 0.0;
 	double NextNetLog = 0.0;
@@ -193,4 +203,6 @@ private:
 	TObjectPtr<UInputAction> FfbTestAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> GraphicsAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> PhysicsAction;
 };

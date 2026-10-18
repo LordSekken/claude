@@ -1,5 +1,5 @@
 diff --git a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
-index 214c655..be1eda0 100644
+index 214c655..fc4c9a6 100644
 --- a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
 +++ b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
 @@ -163,7 +163,7 @@ void ChPac02Tire::CalcFxyMz(double& Fx, double& Fy, double& Mz, double kappa, do
@@ -20,3 +20,46 @@ index 214c655..be1eda0 100644
      // Fy0 = Dy * std::sin(Cy * std::atan(By * alpha_y - Ey * (By * alpha_y - std::atan(By * alpha_y)))) + Svy;
      Fy0 = Dy * std::sin(Cy * std::atan(Y1 - Ey * (Y1 - std::atan(Y1)))) + Svy;
  
+@@ -1831,6 +1831,8 @@ void ChPac02Tire::Synchronize(double time, const ChTerrain& terrain) {
+         m_states.dpi = 1;
+         m_states.brx = 0;
+         m_states.bry = 0;
++        m_states.kappa_t = 0;
++        m_states.tana_t = 0;
+         m_states.disc_normal = ChVector3d(0, 0, 0);
+     }
+ }
+@@ -1860,6 +1862,20 @@ void ChPac02Tire::Advance(double step) {
+     double gamma = m_states.gamma;
+     double frblend = ChFunctionSineStep::Eval(std::abs(m_data.vel.x()), m_frblend_begin, 0.0, m_frblend_end, 1.0);
+ 
++    // DriftLab: transient slip (relaxation length), Pacejka "Tyre and Vehicle Dynamics" 8.2:
++    //   sigma * dk/dt + |Vx| * k = -Vsx,   sigma * dt/dt + |Vx| * t = Vsy   (t = tan alpha)
++    // integrated with backward Euler, so it stays stable at any speed and step (the
++    // steady-state slip made free-rolling wheels oscillate at low speed with a 1 ms step).
++    {
++        const double vx = std::abs(m_data.vel.x());
++        const double sk = ChClamp(CalcSigmaK(Fz), 0.02, 1.0);
++        const double sa = ChClamp(CalcSigmaA(Fz), 0.02, 1.0);
++        m_states.kappa_t = (sk * m_states.kappa_t - step * m_states.vsx) / (sk + step * vx);
++        m_states.tana_t = (sa * m_states.tana_t + step * m_states.vsy) / (sa + step * vx);
++        kappa = ChClamp(m_states.kappa_t, -1.0, 1.0);
++        alpha = ChClamp(std::atan(m_states.tana_t), -CH_PI_2 + 0.01, CH_PI_2 - 0.01);
++    }
++
+     switch (m_use_mode) {
+         case 0:
+             // vertical spring & damper mode
+diff --git a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
+index 2bb4c5b..00c25f2 100644
+--- a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
++++ b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
+@@ -403,6 +403,8 @@ class CH_VEHICLE_API ChPac02Tire : public ChForceElementTire {
+         double Pi0_prime;        // scaled inflation pressure
+         double dpi;              // normalized inflation pressure
+         double brx{0};           // bristle deformation x
++        double kappa_t{0};       // DriftLab: transient (relaxed) longitudinal slip
++        double tana_t{0};        // DriftLab: transient (relaxed) tan(slip angle)
+         double bry{0};           // bristle deformation y
+         ChVector3d disc_normal;  //(temporary for debug)
+     };

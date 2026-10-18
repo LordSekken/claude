@@ -28,8 +28,17 @@
 #include "drift/CarSpec.h"
 #include "drift/Json.h"
 #include "DriftGraphics.h"
+#include "DriftChronoBackend.h"
 #include "DriftUE.h"
+#include "HAL/IConsoleManager.h"
 #include "Net/UnrealNetwork.h"
+
+// Test autopilot for headless runs: >= 0 overrides the pedals / steering of the local car.
+static TAutoConsoleVariable<float> CVarAutoThrottle(TEXT("drift.AutoThrottle"), -1.f, TEXT("Test: throttle 0..1 (-1 = off)"));
+static TAutoConsoleVariable<float> CVarAutoSteer(TEXT("drift.AutoSteer"), -2.f, TEXT("Test: steering -1..1 (-2 = off)"));
+static TAutoConsoleVariable<int32> CVarPhysicsLog(TEXT("drift.PhysicsLog"), 0, TEXT("Log car state once a second"));
+static TAutoConsoleVariable<int32> CVarNoWheel(TEXT("drift.NoWheel"), 0, TEXT("1 = don't start the wheel/FFB helper (unattended tests)"));
+static TAutoConsoleVariable<int32> CVarUseDriftCore(TEXT("drift.UseDriftCore"), 0, TEXT("1 = start on DriftCore physics instead of Chrono (set before Play)"));
 
 DEFINE_LOG_CATEGORY_STATIC(LogDrift, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogDriftNet, Log, All);
@@ -131,13 +140,23 @@ void ADriftCarPawn::BeginPlay()
 void ADriftCarPawn::StartLocal()
 {
 	bLocalStarted = true;
+	// [DriftPhysics] Backend=Chrono (default) or DriftCore; F6 switches while driving.
+	FString Backend = TEXT("Chrono");
+	GConfig->GetString(TEXT("DriftPhysics"), TEXT("Backend"), Backend, GGameIni);
+	if (!Backend.Equals(TEXT("DriftCore"), ESearchCase::IgnoreCase) && CVarUseDriftCore.GetValueOnGameThread() == 0)
+	{
+		StartChrono();
+	}
 	ResetCar(GetActorLocation(), GetActorRotation().Yaw);
 	LastOnRoad = GetActorLocation();
 	LastOnRoadYaw = GetActorRotation().Yaw;
 	LowestY = Vehicle->Origin().y - 300.0;
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
-	Wheel = std::make_unique<FDriftWheel>();
-	Wheel->Start();
+	if (CVarNoWheel.GetValueOnGameThread() == 0)
+	{
+		Wheel = std::make_unique<FDriftWheel>();
+		Wheel->Start();
+	}
 	GraphicsPreset = DriftGraphics::Saved();
 	if (UHeadMountedDisplayFunctionLibrary::IsHeadMountedDisplayEnabled())
 	{
@@ -321,7 +340,46 @@ void ADriftCarPawn::ResetCar(const FVector& Location, float Yaw)
 		Origin = Ground.point + drift::Vec3(0, W.radius + W.travel * 0.6, 0);
 	}
 	Vehicle->Reset(Origin, DriftUE::CoreRot(FRotator(0.f, Yaw, 0.f).Quaternion()));
+	if (Chrono)
+	{
+		Chrono->Reset(Vehicle->Origin(), Vehicle->Rotation());
+	}
 	SetActorLocationAndRotation(DriftUE::Pos(Vehicle->Origin()), DriftUE::Rot(Vehicle->Rotation()));
+}
+
+bool ADriftCarPawn::StartChrono()
+{
+	FString Err;
+	Chrono = FDriftChrono::Create(CarSpec, Err);
+	if (!Chrono)
+	{
+		UE_LOG(LogDrift, Warning, TEXT("Chrono physics unavailable (%s) - using DriftCore."), *Err);
+		return false;
+	}
+	return true;
+}
+
+void ADriftCarPawn::OnTogglePhysics()
+{
+	if (!Vehicle)
+	{
+		return;
+	}
+	const drift::Vec3 Origin = Vehicle->Origin();
+	const drift::Mat3 Rot = Vehicle->Rotation();
+	const drift::Vec3 Vel = Vehicle->Velocity(), AngVel = Vehicle->AngularVelocity();
+	if (Chrono)
+	{
+		// Back to DriftCore, keeping the car's motion.
+		Chrono.Reset();
+		Vehicle->Reset(Origin, Rot);
+		Vehicle->SetMotion(Vel, AngVel);
+	}
+	else if (StartChrono())
+	{
+		Chrono->Reset(Origin + Rot.c1 * 0.02, Rot);   // starts at rest
+	}
+	PhysicsShownUntil = FPlatformTime::Seconds() + 3.0;
 }
 
 static void MapAxis(UInputMappingContext* Ctx, UInputAction* Action, const FKey& Key, bool bNegate = false, float DeadZone = 0.f)
@@ -362,6 +420,7 @@ void ADriftCarPawn::CreateInput()
 	AutoShiftAction = MakeAction(TEXT("IA_AutoShift"), EInputActionValueType::Boolean);
 	FfbTestAction = MakeAction(TEXT("IA_FfbTest"), EInputActionValueType::Boolean);
 	GraphicsAction = MakeAction(TEXT("IA_Graphics"), EInputActionValueType::Boolean);
+	PhysicsAction = MakeAction(TEXT("IA_Physics"), EInputActionValueType::Boolean);
 
 	Mapping = NewObject<UInputMappingContext>(this, TEXT("IMC_Drift"));
 	// Gamepad (Forza-style layout).
@@ -391,6 +450,7 @@ void ADriftCarPawn::CreateInput()
 	Mapping->MapKey(AutoShiftAction, EKeys::M);
 	Mapping->MapKey(FfbTestAction, EKeys::T);
 	Mapping->MapKey(GraphicsAction, EKeys::F5);
+	Mapping->MapKey(PhysicsAction, EKeys::F6);
 }
 
 void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -413,6 +473,7 @@ void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		Eic->BindAction(AutoShiftAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleAutoShift);
 		Eic->BindAction(FfbTestAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbTest);
 		Eic->BindAction(GraphicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnCycleGraphics);
+		Eic->BindAction(PhysicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnTogglePhysics);
 	}
 	else
 	{
@@ -534,7 +595,33 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 		StartLocal();
 	}
 	ReadInput(DeltaSeconds);
-	Vehicle->Step(DeltaSeconds, *PhysWorld);
+	if (CVarAutoThrottle.GetValueOnGameThread() >= 0.f)
+	{
+		Vehicle->in.throttle = CVarAutoThrottle.GetValueOnGameThread();
+		Vehicle->in.brake = 0.0;
+		Vehicle->in.auto_clutch = true;
+	}
+	if (CVarAutoSteer.GetValueOnGameThread() >= -1.f)
+	{
+		Vehicle->in.steer = CVarAutoSteer.GetValueOnGameThread();
+		Vehicle->in.direct_steer = true;
+	}
+	if (CVarPhysicsLog.GetValueOnGameThread() && FPlatformTime::Seconds() >= NextPhysicsLog)
+	{
+		NextPhysicsLog = FPlatformTime::Seconds() + 1.0;
+		const drift::Vec3 O = Vehicle->Origin();
+		UE_LOG(LogDrift, Log, TEXT("[phys %s %.2f ms dt %.3f] origin (%.2f %.2f %.2f) %.1f km/h gear %d rpm %.0f drift %.1f wheels on road %d ffb %+.2f fz %.0f %.0f %.0f %.0f"),
+			*GetPhysicsName(), GetPhysicsMs(), DeltaSeconds, O.x, O.y, O.z, Vehicle->Speed() * 3.6, Vehicle->Gear(), Vehicle->Rpm(), Vehicle->DriftAngleDeg(),
+			Vehicle->OnRoadWheels(), Vehicle->FfbForce(), Vehicle->Wheel(0).fz, Vehicle->Wheel(1).fz, Vehicle->Wheel(2).fz, Vehicle->Wheel(3).fz);
+	}
+	if (Chrono)
+	{
+		Chrono->Step(DeltaSeconds, *Vehicle, *PhysWorld);
+	}
+	else
+	{
+		Vehicle->Step(DeltaSeconds, *PhysWorld);
+	}
 	if (Vehicle->OnRoadWheels() >= 3)
 	{
 		LastOnRoad = GetActorLocation();

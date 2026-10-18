@@ -278,6 +278,9 @@ def build_car(ac_dir, spec_path, out_root):
                                         "tire_rear": "%s/Tire_REAR.json" % cid,
                                         "steer_ratio": sp.get("model", {}).get("steer_ratio", 12.0),
                                         "steer_lock": sp["steer_lock"], "cda": sp.get("cda", 0.7),
+                                        # DriftCore's body origin (mid-axles, wheel-centre height) in the
+                                        # chassis reference frame, so models/cameras line up.
+                                        "dc_origin": [(a - b) / 2, 0.0, (rf + rr) / 2],
                                         "notes": notes})
     return d, notes
 

@@ -16,3 +16,5 @@ DriftGame/Cars/
 DriftGame/Content/Cars/
 DriftGame/Content/DriftData/Cars/ac_*.json
 DriftGame/Content/DriftData/SelectedCar.txt
+# Chrono car files made from AC cars by drift-sim/tools/ac_to_chrono.py
+DriftGame/Content/DriftData/ChronoCars/

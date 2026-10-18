@@ -398,7 +398,10 @@ void Vehicle::SolveWheel(WheelState& wh, double brake_t, double dt) {
 	wh.fy = f.y;
 }
 
-void Vehicle::UpdateDrivetrain(double dt) {
+// Driver aids between the pedals and the drivetrain: auto shift / reverse,
+// turbo spool, limiter cut, shift throttle lift, idle control, auto clutch.
+// Shared by DriftCore's own drivetrain and external physics (ControlStep).
+void Vehicle::DriverControls(double dt, double& throttle, double& brake, double& engage) {
 	const double limiter = spec_.limiter_rpm, idle = spec_.idle_rpm;
 	const double rpm_now = Rpm();
 
@@ -412,7 +415,8 @@ void Vehicle::UpdateDrivetrain(double dt) {
 			auto_shift_cooldown_ = 0.8;
 		}
 	}
-	double throttle = in.throttle, brake = in.brake;
+	throttle = in.throttle;
+	brake = in.brake;
 	if (in.auto_shift) {
 		const double v_fwd = vel_.Dot(Forward());
 		if (gear_ >= 1 && in.brake > 0.3 && in.throttle < 0.05 && v_fwd < 0.5) gear_ = -1;
@@ -443,7 +447,7 @@ void Vehicle::UpdateDrivetrain(double dt) {
 		if (idle_t > throttle) throttle = idle_t;
 	}
 
-	double engage = 1.0 - in.clutch;
+	engage = 1.0 - in.clutch;
 	const double ratio = Ratio();
 	if (in.auto_clutch) {
 		double launch = Clamp((rpm_now - idle * 1.1) / 1800.0, 0.0, 1.0);
@@ -452,6 +456,69 @@ void Vehicle::UpdateDrivetrain(double dt) {
 		if (launch < engage) engage = launch;
 	}
 	if (gear_ == 0 || shift_timer_ > 0.0) engage = 0.0;
+}
+
+Vehicle::Controls Vehicle::ControlStep(double dt) {
+	UpdateSteering(dt);
+	Controls c;
+	DriverControls(dt, c.throttle, c.brake, c.engage);
+	c.steer_angle = steer_angle_;
+	c.handbrake = in.handbrake;
+	c.gear = gear_;
+	return c;
+}
+
+void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
+	rot_ = s.rot;
+	com_ = s.origin + rot_ * com_local_;
+	vel_ = s.vel;
+	ang_vel_ = s.ang_vel;
+	engine_omega_ = s.rpm * kTau / 60.0;
+	on_road_wheels_ = 0;
+	double slip_sum = 0.0, fz_sum = 0.0;
+	for (int i = 0; i < 4; ++i) {
+		WheelState& wh = wheels_[static_cast<size_t>(i)];
+		const ExternalWheel& e = s.wheel[i];
+		wh.prev_compression = wh.compression;
+		wh.compression = Clamp(e.center_local.y - (wh.mount.y - wh.travel), 0.0, wh.travel + 0.1);
+		wh.steer = e.steer;
+		wh.omega = e.omega;
+		wh.spin = std::fmod(e.spin, kTau);
+		wh.contact = e.contact;
+		wh.point = e.point;
+		wh.fz = e.fz;
+		wh.fx = e.fx;
+		wh.fy = e.fy;
+		wh.slip_ratio = e.slip_ratio;
+		wh.slip_angle = e.slip_angle;
+		wh.surface = Surface::Asphalt;
+		if (wh.contact) ++on_road_wheels_;
+		if (wh.front && wh.contact) slip_sum += wh.slip_angle * wh.fz, fz_sum += wh.fz;
+	}
+	const Vec3 up = Up(), fwd = Forward(), right = Right();
+	const Vec3 v_flat = vel_ - up * vel_.Dot(up);
+	drift_angle_ = v_flat.Length() > 2.0 ? Rad2Deg(std::atan2(v_flat.Dot(right), v_flat.Dot(fwd))) : 0.0;
+
+	// Force feedback: the real rack load from the external model, same fades/damper/spring as ours.
+	ffb_time_ += dt;
+	const double speed = Speed();
+	double f = s.rack_force_ref > 0.0 ? s.rack_force / s.rack_force_ref : 0.0;
+	f *= Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
+	if (ffb_jolt_t_ > 0.0) {
+		ffb_jolt_t_ -= dt;
+		f += ffb_jolt_;
+	}
+	ffb_force_ = Clamp(f, -1.0, 1.0);
+	ffb_damper_ = Lerp(0.45, 0.08, Clamp(speed / 8.0, 0.0, 1.0));
+	ffb_spring_ = Lerp(0.12, 0.0, Clamp(speed / 5.0, 0.0, 1.0));
+}
+
+void Vehicle::UpdateDrivetrain(double dt) {
+	const double idle = spec_.idle_rpm;
+	double throttle = 0.0, brake = 0.0, engage = 0.0;
+	DriverControls(dt, throttle, brake, engage);
+	const double ratio = Ratio();
+	const double rpm_now = Rpm();
 	// Starter: a stalled engine cranks back to idle once it's declutched (clutch
 	// in, neutral, or auto clutch). Idle throttle alone makes almost no torque
 	// near 0 rpm, so it used to take ages to come back.

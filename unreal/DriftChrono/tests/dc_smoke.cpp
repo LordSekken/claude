@@ -1,0 +1,161 @@
+// DriftChrono smoke test: flat ground at y = 0 and a wall across the road,
+// all through the C interface the game uses.
+//   dc_smoke <car root> <car id>
+#include <cmath>
+#include <cstdio>
+
+#include "drift_chrono.h"
+
+namespace {
+int Flat(void*, const double from[3], const double to[3], double p[3], double n[3], double* grip) {
+    if (from[1] < 0 || to[1] > 0) return 0;
+    const double t = from[1] / (from[1] - to[1]);
+    for (int i = 0; i < 3; ++i) p[i] = from[i] + (to[i] - from[i]) * t;
+    n[0] = 0, n[1] = 1, n[2] = 0;
+    *grip = 1.0;
+    return 1;
+}
+
+int failures = 0;
+void Check(bool ok, const char* what) {
+    std::printf("%s  %s\n", ok ? "ok  " : "FAIL", what);
+    if (!ok) ++failures;
+}
+
+double Speed(const dc_state& s) { return std::sqrt(s.vel[0] * s.vel[0] + s.vel[2] * s.vel[2]); }
+}  // namespace
+
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        std::printf("usage: dc_smoke <car root> <car id>\n");
+        return 2;
+    }
+    char err[512] = {};
+    dc_car* car = dc_create(argv[1], argv[2], err, sizeof(err));
+    if (!car) {
+        std::printf("create failed: %s\n", err);
+        return 1;
+    }
+    dc_set_ground(car, Flat, nullptr);
+    const double origin[3] = {0, 0.30, 0};
+    const double rot[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    dc_reset(car, origin, rot);
+    dc_state s;
+    dc_controls c = {0, 0, 1, 0, 1, 0};
+
+    for (int i = 0; i < 100; ++i) {
+        if (i < 3) {
+            dc_get_state(car, &s);
+            std::printf("  step %d: origin %.3f %.3f %.3f fz %.0f wheel0 local %.2f %.2f %.2f\n", i, s.origin[0], s.origin[1],
+                        s.origin[2], s.wheel[0].fz, s.wheel[0].center_local[0], s.wheel[0].center_local[1],
+                        s.wheel[0].center_local[2]);
+        }
+        dc_step(car, i < 3 ? 0.001 : 0.01, &c, nullptr, 0);
+    }
+    dc_get_state(car, &s);
+    double fz = 0;
+    for (auto& w : s.wheel) fz += w.fz;
+    std::printf("settled: origin y %.3f, wheel loads %.0f %.0f %.0f %.0f (sum %.0f N), lock %.1f deg\n", s.origin[1],
+                s.wheel[0].fz, s.wheel[1].fz, s.wheel[2].fz, s.wheel[3].fz, fz, s.steer_lock * 57.3);
+    Check(std::fabs(s.origin[1] - 0.275) < 0.05, "rests at about wheel-centre height");
+    Check(fz > 9000 && fz < 13000, "wheel loads carry the car's weight");
+    Check(s.wheel[0].center_local[0] < 0 && s.wheel[0].center_local[2] < 0, "wheel 0 is front-left (x<0, z<0)");
+
+    c = {0, 0.6, 0, 0, 1, 1};
+    double us = 0;
+    int n = 0;
+    for (int i = 0; i < 400; ++i, ++n) {
+        dc_step(car, 0.01, &c, nullptr, 0);
+        us += dc_last_step_us(car);
+    }
+    dc_get_state(car, &s);
+    std::printf("after 4 s in 1st: %.1f km/h, origin z %.1f, %.0f rpm, gear %d, %.0f us per 10 ms frame\n",
+                Speed(s) * 3.6, s.origin[2], s.rpm, s.gear, us / n);
+    Check(s.origin[2] < -5 && s.vel[2] < -3, "drives forward (-z)");
+    Check(s.wheel[2].omega > 5, "rear wheels roll forward (+omega)");
+
+    c.gear = 2;
+    c.steer_angle = 0.15;
+    for (int i = 0; i < 150; ++i) dc_step(car, 0.01, &c, nullptr, 0);
+    dc_get_state(car, &s);
+    std::printf("steer right 8.6 deg: yaw rate %+.3f, wheel steer FL %+.1f FR %+.1f deg, rack force %+.0f N, lat Fy FL %+.0f\n",
+                s.ang_vel[1], s.wheel[0].steer * 57.3, s.wheel[1].steer * 57.3, s.rack_force, s.wheel[0].fy);
+    Check(s.ang_vel[1] < -0.1, "turns right (negative yaw rate about +y)");
+    Check(s.wheel[0].steer > 0.05 && s.wheel[1].steer > 0.05, "front wheels steer right (+)");
+    Check(s.rack_force < -500, "road pushes the rack back towards centre (self-aligning)");
+    Check(s.wheel[0].fy > 500, "front tyre lateral force points right (into the turn)");
+
+    // Low-speed launch, wheel straight: the rack shouldn't be yanked (Unreal showed full FFB at ~10 km/h).
+    dc_reset(car, origin, rot);
+    c = {0, 0.35, 0, 0, 1, 1};
+    double max_rack = 0;
+    for (int i = 0; i < 600; ++i) {
+        dc_step(car, 0.01, &c, nullptr, 0);
+        dc_get_state(car, &s);
+        if (i > 30 && std::fabs(s.rack_force) > max_rack) {   // skip the reset itself (rack re-centring in the air)
+            max_rack = std::fabs(s.rack_force);
+            if (max_rack > 1500)
+                std::printf("  launch t %.2f %.1f km/h rack %+.0f N  Fy FL %+.0f FR %+.0f  Fx FL %+.0f  steer FL %+.3f FR %+.3f deg"
+                            "  Fz FL %.0f FR %.0f  wheel y FL %.3f  rpm %.0f\n",
+                            i * 0.01, Speed(s) * 3.6, s.rack_force, s.wheel[0].fy, s.wheel[1].fy, s.wheel[0].fx,
+                            s.wheel[0].steer * 57.3, s.wheel[1].steer * 57.3, s.wheel[0].fz, s.wheel[1].fz,
+                            s.wheel[0].center_local[1], s.rpm);
+        }
+    }
+    std::printf("launch straight to %.0f km/h: max |rack force| %.0f N\n", Speed(s) * 3.6, max_rack);
+    Check(max_rack < 2000, "straight launch keeps the rack force small");
+
+    // Gentle turn (the Unreal test that spun): 1st gear, 35 % throttle to ~48 km/h, then 2.1 deg of steering.
+    dc_reset(car, origin, rot);
+    c = {0, 0.35, 0, 0, 1, 1};
+    for (int i = 0; i < 1200; ++i) {
+        dc_step(car, 0.01, &c, nullptr, 0);
+        dc_get_state(car, &s);
+        if (Speed(s) > 48 / 3.6) break;
+    }
+    c.steer_angle = 0.04 * s.steer_lock;
+    double max_drift = 0;
+    for (int i = 0; i < 300; ++i) {
+        dc_step(car, 0.01, &c, nullptr, 0);
+        dc_get_state(car, &s);
+        const double fwd_x = -s.rot[6], fwd_z = -s.rot[8], right_x = s.rot[0], right_z = s.rot[2];
+        const double drift = std::atan2(s.vel[0] * right_x + s.vel[2] * right_z, s.vel[0] * fwd_x + s.vel[2] * fwd_z) * 57.3;
+        max_drift = std::fmax(max_drift, std::fabs(drift));
+        if (i % 50 == 0)
+            std::printf("  turn t %.1f: %.1f km/h drift %+.1f yaw %+.2f rpm %.0f fz %.0f %.0f %.0f %.0f\n", i * 0.01, Speed(s) * 3.6,
+                        drift, s.ang_vel[1], s.rpm, s.wheel[0].fz, s.wheel[1].fz, s.wheel[2].fz, s.wheel[3].fz);
+    }
+    Check(max_drift < 10, "2 deg of steering at 48 km/h on part throttle doesn't spin it");
+
+    // Wall: fresh straight run, then a wall 15 m ahead along the heading.
+    dc_reset(car, origin, rot);
+    c = {0, 0.6, 0, 0, 1, 1};
+    for (int i = 0; i < 300; ++i) dc_step(car, 0.01, &c, nullptr, 0);
+    dc_get_state(car, &s);
+    const double fwd[3] = {-s.rot[6], -s.rot[7], -s.rot[8]};
+    const double wall = (s.origin[0] * fwd[0] + s.origin[2] * fwd[2]) + 15.0;   // distance along heading
+    const double v0 = Speed(s);
+    c.throttle = 0.4;
+    double min_gap = 1e9;
+    for (int i = 0; i < 400; ++i) {
+        dc_get_state(car, &s);
+        const double nose = (s.origin[0] * fwd[0] + s.origin[2] * fwd[2]) + 2.0;
+        dc_contact ct = {};
+        int count = 0;
+        if (nose > wall) {
+            for (int k = 0; k < 3; ++k) ct.point[k] = s.origin[k] + fwd[k] * 2.0;
+            ct.normal[0] = -fwd[0], ct.normal[1] = 0, ct.normal[2] = -fwd[2];
+            ct.depth = nose - wall;
+            count = 1;
+        }
+        min_gap = std::fmin(min_gap, wall - nose);
+        dc_step(car, 0.01, &c, &ct, count);
+    }
+    dc_get_state(car, &s);
+    std::printf("wall: hit at %.1f km/h, deepest %.2f m, now %.1f km/h\n", v0 * 3.6, -min_gap, Speed(s) * 3.6);
+    Check(-min_gap < 0.5 && Speed(s) < 5, "wall stops the car without passing through");
+
+    dc_destroy(car);
+    std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);
+    return failures ? 1 : 0;
+}

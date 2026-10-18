@@ -121,6 +121,19 @@ vite files) is an unrelated web app.
   per window at full gas; DriftCore (tuned to AC) RMS 1.11, corr 0.99, gain 1.02. Missing in the Chrono car:
   rolling resistance (old-format .tir), turbo boost map, camber effect on grip (PDY3=0), relaxation length.
 - AC importer mass fixed: TOTALMASS includes the driver, + fuel x 0.74 (was -75 kg).
+- In the game (2026-10-17): `unreal/DriftChrono` = DriftChrono.dll (C API `include/drift_chrono.h`, DriftCore
+  frame; build `cmake -S unreal/DriftChrono -B C:/Dev/drift_chrono_build -DChrono_DIR=C:/Dev/chrono_build/cmake`,
+  test `dc_smoke <ChronoCars dir> <car>`). DriftGame loads it at runtime (`DriftChronoBackend.cpp`) from
+  Binaries/Win64 with Chrono_core.dll + Chrono_vehicle.dll (copied there, not in git); car files in
+  Content/DriftData/ChronoCars/<spec id>/ (ac_to_chrono.py output, gitignored). Falls back to DriftCore if
+  missing. DriftCore runs the driver aids (`Vehicle::ControlStep`) and takes Chrono's state
+  (`ApplyExternal`) so HUD/telemetry/net/visuals are unchanged. F6 toggles physics; [DriftPhysics] Backend,
+  [DriftChrono] FfbRackForce (rack N for full FFB). FFB = Chrono steering-rack load. Body contacts: walls/cars
+  only (floors are the tyres' job) as penalty springs. Chrono neutral (1e20 ratio) blows up: DLL keeps a gear
+  and opens the clutch. Pac02 patch also adds transient slip (relaxation length from the .tir PTX/PTY): the
+  steady-state slip made free-rolling front wheels oscillate below ~15 km/h (24 kN rack spikes).
+- Headless UE tests: `drift.AutoThrottle/AutoSteer/PhysicsLog/NoWheel/UseDriftCore` cvars (set NoWheel before
+  Play so tests never drive the owner's G920). Headless editor runs ~3 fps (RenderOffscreen).
 
 ## Forza / track inference notes
 FH packets 324 bytes, dash block at 244. SurfaceRumble per wheel at 148-160 (0 tarmac, 0.12 rough,

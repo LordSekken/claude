@@ -141,6 +141,36 @@ public:
 	double FfbDamper() const { return ffb_damper_; }
 	double FfbSpring() const { return ffb_spring_; }   // 0..1 centring spring (strong when parked)
 
+	// --- External physics (e.g. Project Chrono through DriftChrono) ---------
+	// The host runs ControlStep for the driver aids (steering assist, auto
+	// clutch/shift, idle, limiter), feeds the result to the other model, then
+	// ApplyExternal with its state so everything that reads this Vehicle
+	// (cameras, HUD, telemetry, multiplayer, FFB) keeps working.
+	struct Controls {
+		double steer_angle = 0.0;   // mean front road-wheel angle, rad, + right
+		double throttle = 0.0, brake = 0.0, handbrake = 0.0;
+		double engage = 1.0;        // clutch: 0 open .. 1 engaged
+		int gear = 1;
+	};
+	struct ExternalWheel {
+		Vec3 center_local;          // body frame, relative to Origin()
+		double steer = 0.0, omega = 0.0, spin = 0.0;
+		bool contact = false;
+		Vec3 point;
+		double fz = 0.0, fx = 0.0, fy = 0.0, slip_ratio = 0.0, slip_angle = 0.0;
+	};
+	struct ExternalState {
+		Vec3 origin;
+		Mat3 rot;
+		Vec3 vel, ang_vel;
+		ExternalWheel wheel[4];
+		double rpm = 0.0;
+		double rack_force = 0.0;      // N, + pushes the wheels right
+		double rack_force_ref = 8000.0;   // rack force for full FFB
+	};
+	Controls ControlStep(double dt);
+	void ApplyExternal(const ExternalState& s, double dt);
+
 	void ShiftUp();
 	void ShiftDown();
 	void SetGear(int gear, bool instant = false);   // H-shifter: -1 R, 0 N, 1..GearCount(); instant = no shift delay (replay)
@@ -151,6 +181,7 @@ private:
 	void UpdateSteering(double dt);
 	void UpdateSuspension(World& world, double dt);
 	void UpdateDrivetrain(double dt);
+	void DriverControls(double dt, double& throttle, double& brake, double& engage);
 	void Integrate(double dt, const Vec3& force, const Vec3& torque);
 	void ResolveContacts(World& world);
 	void ComputeFfb(double dt);

@@ -13,5 +13,8 @@ public class DriftGame : ModuleRules
 		// unreal/DriftCore. Its sources are compiled into this module by
 		// DriftCoreBuild.cpp.
 		PublicIncludePaths.Add(Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", "DriftCore", "include")));
+		// DriftChrono (Project Chrono vehicle physics): only its C header - the DLL is
+		// loaded at runtime from Binaries/Win64 (see DriftChronoBackend.cpp).
+		PublicIncludePaths.Add(Path.GetFullPath(Path.Combine(ModuleDirectory, "..", "..", "..", "DriftChrono", "include")));
 	}
 }
