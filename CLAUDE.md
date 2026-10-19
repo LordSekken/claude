@@ -175,7 +175,10 @@ vite files) is an unrelated web app.
   yaw response time 0.35 s (<=0.30), phase lag 50 deg at 1 Hz (<=40) - suspects: AC inertia box 4.95 m long vs real
   Miata 3.95 m (yaw inertia too high), relaxation; drift-hold test driver commands road-wheel angles linearly
   (DLL maps steer_angle/lock to rack input) - the rack is non-linear now.
-- Next: synchro shift timing per gearbox, yaw inertia check, FFB loop at >=333 Hz (helper extrapolation), G920
+- Done 2026-10-19: yaw inertia = m*a*b*0.95 (dynamic index) minus corners (AC box was ~1.85x): response 0.18 s,
+  lag 30 deg, all dc_maneuvers pass. H-shifter synchro model (DriftCore SelectGear: synchro_nm/gearbox_inertia,
+  clutch-out only within shift_window_rpm = AC VALID_SHIFT_RPM_WINDOW, else GRIND on HUD; dog_box option).
+- Next: FFB loop at >=333 Hz (helper extrapolation), G920
   min-force/LUT, sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)

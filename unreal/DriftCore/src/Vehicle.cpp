@@ -59,7 +59,9 @@ void Vehicle::Reset(const Vec3& origin, const Mat3& rot) {
 		wh.compression = wh.prev_compression = 0.0;
 		wh.contact = false;
 	}
-	gear_ = 1;
+	gear_ = select_gear_ = 1;
+	input_omega_ = engage_time_ = 0.0;
+	grinding_ = false;
 	boost_ = 0.0;
 	shift_timer_ = limiter_timer_ = 0.0;
 	engine_omega_ = spec_.idle_rpm * kTau / 60.0;
@@ -86,6 +88,7 @@ Vec3 Vehicle::SeatLocal() const {
 void Vehicle::ShiftUp() {
 	if (gear_ < GearCount()) {
 		gear_ += 1;
+		select_gear_ = gear_;
 		shift_timer_ = spec_.shift_time;
 	}
 }
@@ -93,15 +96,78 @@ void Vehicle::ShiftUp() {
 void Vehicle::ShiftDown() {
 	if (gear_ > -1) {
 		gear_ -= 1;
+		select_gear_ = gear_;
 		shift_timer_ = spec_.shift_time;
 	}
 }
 
 void Vehicle::SetGear(int gear, bool instant) {
 	gear = gear < -1 ? -1 : (gear > GearCount() ? GearCount() : gear);
+	select_gear_ = gear;
+	grinding_ = false;
 	if (gear != gear_) {
 		gear_ = gear;
 		shift_timer_ = instant ? 0.0 : spec_.shift_time;
+	}
+}
+
+void Vehicle::SelectGear(int gear) {
+	gear = gear < -1 ? -1 : (gear > GearCount() ? 0 : gear);
+	if (gear == select_gear_) return;
+	select_gear_ = gear;
+	engage_time_ = 0.0;
+	grinding_ = false;
+	shift_timer_ = 0.0;
+	if (gear_ != 0) {
+		input_omega_ = DrivenOmega() * Ratio();   // the input shaft keeps the old gear's speed
+		gear_ = 0;
+	}
+}
+
+// H-shifter engagement. Sleeve travel after the speeds match: ~20 ms (synchro), ~12 ms (dogs).
+void Vehicle::UpdateSelector(double dt) {
+	const bool clutch_open = in.clutch > 0.6 || in.auto_clutch;
+	if (gear_ != 0) {
+		input_omega_ = DrivenOmega() * Ratio();
+		return;
+	}
+	const double J = spec_.gearbox_inertia > 1e-4 ? spec_.gearbox_inertia : 1e-4;
+	if (!clutch_open) {
+		input_omega_ = engine_omega_;   // disc held against the flywheel
+	} else {
+		// Bearing/oil drag on the free input shaft (~0.6 N m): it slows over a few seconds.
+		const double drag = 0.6 / J * dt;
+		input_omega_ = std::fabs(input_omega_) <= drag ? 0.0 : input_omega_ - (input_omega_ > 0 ? drag : -drag);
+	}
+	if (select_gear_ == 0) {
+		grinding_ = false;
+		return;
+	}
+	const double target = DrivenOmega() * GearRatio(select_gear_);
+	const double rpm_per = 60.0 / kTau;
+	double mismatch = std::fabs(input_omega_ - target);
+	if (spec_.dog_box) {
+		grinding_ = mismatch * rpm_per > spec_.dog_window_rpm;
+		engage_time_ = grinding_ ? 0.0 : engage_time_ + dt;
+		if (engage_time_ >= 0.012) gear_ = select_gear_;
+		return;
+	}
+	if (clutch_open) {
+		// The synchro cone drags the input shaft to the gear's speed. Reverse is usually
+		// unsynchronised or uses a weak brake synchro.
+		const double rate = spec_.synchro_nm * (select_gear_ < 0 ? 0.3 : 1.0) / J * dt;
+		input_omega_ += Clamp(target - input_omega_, -rate, rate);
+		mismatch = std::fabs(input_omega_ - target);
+		grinding_ = false;
+		engage_time_ = mismatch * rpm_per < 30.0 ? engage_time_ + dt : 0.0;
+	} else {
+		// Clutch out: the synchro can't move the engine - only a rev-matched shift goes in.
+		grinding_ = mismatch * rpm_per > spec_.shift_window_rpm;
+		engage_time_ = grinding_ ? 0.0 : engage_time_ + dt;
+	}
+	if (engage_time_ >= 0.02) {
+		gear_ = select_gear_;
+		grinding_ = false;
 	}
 }
 
@@ -315,9 +381,11 @@ void Vehicle::UpdateSuspension(World& world, double dt) {
 	}
 }
 
-double Vehicle::Ratio() const {
-	if (gear_ == 0) return 0.0;
-	const double g = gear_ < 0 ? -spec_.reverse : spec_.gears[static_cast<size_t>(gear_ - 1)];
+double Vehicle::Ratio() const { return GearRatio(gear_); }
+
+double Vehicle::GearRatio(int gear) const {
+	if (gear == 0) return 0.0;
+	const double g = gear < 0 ? -spec_.reverse : spec_.gears[static_cast<size_t>(gear - 1)];
 	return g * spec_.final_drive;
 }
 
@@ -407,6 +475,7 @@ void Vehicle::DriverControls(double dt, double& throttle, double& brake, double&
 	const double rpm_now = Rpm();
 
 	auto_shift_cooldown_ -= dt;
+	UpdateSelector(dt);
 	if (in.auto_shift && shift_timer_ <= 0.0 && gear_ > 0 && auto_shift_cooldown_ <= 0.0) {
 		if (rpm_now > limiter * 0.97 && gear_ < GearCount()) {
 			ShiftUp();
@@ -420,8 +489,8 @@ void Vehicle::DriverControls(double dt, double& throttle, double& brake, double&
 	brake = in.brake;
 	if (in.auto_shift) {
 		const double v_fwd = vel_.Dot(Forward());
-		if (gear_ >= 1 && in.brake > 0.3 && in.throttle < 0.05 && v_fwd < 0.5) gear_ = -1;
-		else if (gear_ == -1 && in.throttle > 0.3 && v_fwd > -0.5) gear_ = 1;
+		if (gear_ >= 1 && in.brake > 0.3 && in.throttle < 0.05 && v_fwd < 0.5) gear_ = select_gear_ = -1;
+		else if (gear_ == -1 && in.throttle > 0.3 && v_fwd > -0.5) gear_ = select_gear_ = 1;
 		if (gear_ == -1) {
 			throttle = in.brake;
 			brake = in.throttle;

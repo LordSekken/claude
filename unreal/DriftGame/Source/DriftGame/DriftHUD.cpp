@@ -26,6 +26,11 @@ void ADriftHUD::DrawHUD()
 	const FString GearText = Gear < 0 ? TEXT("R") : (Gear == 0 ? TEXT("N") : FString::FromInt(Gear));
 	DrawText(FString::Printf(TEXT("%d km/h"), FMath::RoundToInt(V->Speed() * 3.6)), White, X, Y, Big, 2.0f);
 	DrawText(GearText, White, X + 260.f, Y, Big, 2.0f);
+	if (V->Grinding())
+	{
+		// Lever in a gate the gearbox refuses: clutch out and the revs too far off.
+		DrawText(TEXT("GRIND - clutch / rev-match"), FLinearColor(1.f, 0.25f, 0.15f), X + 300.f, Y - 22.f, Small, 1.2f);
+	}
 	DrawText(Car->bAutoShift ? TEXT("AUTO") : TEXT("MANUAL"), Dim, X + 300.f, Y + 10.f, Small, 1.2f);
 
 	// Rev bar, red past 90 % of the limiter.

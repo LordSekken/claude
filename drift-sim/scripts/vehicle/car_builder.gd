@@ -277,6 +277,11 @@ static func assemble(build: Dictionary, lib: PartsLibrary) -> Dictionary:
 		"final": final,
 		"shift_time": JsonUtil.num(trans, "shift_time_s", 0.18),
 		"clutch_nm": maxf(JsonUtil.num(trans, "clutch_max_torque_nm", 0.0), tuned_peak_nm * 1.4),
+		# H-shifter gearbox (DriftCore CarSpec): synchro road box unless the transmission says dog box.
+		"dog_box": bool(trans.get("dog_box", false)),
+		"synchro_nm": JsonUtil.num(trans, "synchro_nm", 25.0),
+		"gearbox_inertia": JsonUtil.num(trans, "input_inertia_kgm2", 0.012),
+		"shift_window_rpm": JsonUtil.num(trans, "shift_window_rpm", 900.0),
 		"cda": JsonUtil.num(ch, "cd", 0.34) * JsonUtil.num(ch, "frontal_area_m2", 2.1),
 		"engine_name": str(eng.name),
 		"cylinders": _cylinders(eng),

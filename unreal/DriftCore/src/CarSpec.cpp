@@ -100,6 +100,11 @@ void CarSpec::FromJsonValue(const JsonValue& root, CarSpec& c) {
 	c.reverse = v.Num("reverse", c.reverse);
 	c.final_drive = v.Num("final", c.final_drive);
 	c.shift_time = v.Num("shift_time", c.shift_time);
+	c.dog_box = v.Bool("dog_box", c.dog_box);
+	c.synchro_nm = v.Num("synchro_nm", c.synchro_nm);
+	c.gearbox_inertia = v.Num("gearbox_inertia", c.gearbox_inertia);
+	c.shift_window_rpm = v.Num("shift_window_rpm", c.shift_window_rpm);
+	c.dog_window_rpm = v.Num("dog_window_rpm", c.dog_window_rpm);
 	c.clutch_nm = v.Num("clutch_nm", c.clutch_nm);
 	c.cda = v.Num("cda", c.cda);
 	const JsonValue& eye = v["eye"];

@@ -82,6 +82,8 @@ static func import_folder(dir: String) -> Dictionary:
 		"max_torque_nm": 0, "mass_kg": 50.0,
 		"shift_time_s": AcIni.f(drv, "GEARBOX", "CHANGE_UP_TIME", 180.0) / 1000.0,
 		"clutch_max_torque_nm": AcIni.f(drv, "CLUTCH", "MAX_TORQUE", 0.0),
+		# Clutchless H-shift: how far off a rev match the gear still goes in.
+		"shift_window_rpm": AcIni.f(drv, "GEARBOX", "VALID_SHIFT_RPM_WINDOW", 900.0),
 	}
 
 	# --- Chassis ------------------------------------------------------------

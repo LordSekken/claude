@@ -327,8 +327,19 @@ def build_car(ac_dir, spec_path, out_root):
     total = sp["mass"]
     chassis_mass = total - 2 * hub_f - 2 * hub_r
     m, w, h, l = total, sp["width"], sp["height"], sp["length"]
-    inertia = [chassis_mass * (h * h + w * w) / 12, chassis_mass * (h * h + l * l) / 12,
-               chassis_mass * (w * w + l * l) / 12 * sp.get("yaw_inertia_scale", 1.0)]
+    # AC's INERTIA box is a uniform box of the body's outer size (BDC Miata: 4.95 m long vs the
+    # real 3.95 m), which puts ~1.8x the yaw inertia of a real car's mass distribution in it. Use the
+    # standard estimate instead: whole-car Izz = m*a*b*k, dynamic index k ~0.95 for front-mid-engined
+    # sports cars (Milliken RCVD 5.2; NHTSA measurements cluster 0.85-1.05), minus the unsprung
+    # masses at the corners. Pitch scales with yaw (same lengthwise spread); roll stays the box's.
+    izz_total = m * a * b * sp.get("yaw_dynamic_index", 0.95) * sp.get("yaw_inertia_scale", 1.0)
+    unsprung = [(hub_f + wheel_mass + tyre_mass, a, sp["track_f"] / 2),
+                (hub_r + wheel_mass + tyre_mass, b, sp["track_r"] / 2)]
+    izz_corners = sum(2 * um * (x * x + y * y) for um, x, y in unsprung)
+    izz = max(izz_total - izz_corners, chassis_mass * (w * w + L * L) / 12 * 0.5)
+    box_izz = chassis_mass * (w * w + l * l) / 12
+    iyy_box = chassis_mass * (h * h + l * l) / 12
+    inertia = [chassis_mass * (h * h + w * w) / 12, iyy_box * izz / box_izz, izz]
 
     # Reference frame: origin on the ground under the CG.
     write(os.path.join(d, "Chassis.json"), {

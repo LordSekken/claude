@@ -56,7 +56,17 @@ struct CarSpec {
 	std::vector<double> gears{3.5, 2.1, 1.4, 1.0, 0.8};
 	double reverse = 3.4;
 	double final_drive = 4.1;
-	double shift_time = 0.18;
+	double shift_time = 0.18;          // sequential/paddle shift (throttle cut) time, s
+	// H-shifter gearbox. Synchro box: the selected gear only goes in once its synchro (a cone clutch,
+	// synchro_nm at a firm hand) has brought the clutch disc + input shaft (gearbox_inertia, kg m^2) to
+	// the new gear's speed - with the clutch pressed. Clutch not pressed: it only engages within
+	// shift_window_rpm of a rev match (AC VALID_SHIFT_RPM_WINDOW), otherwise it baulks/grinds.
+	// Dog box: no synchros, engages within dog_window_rpm with or without the clutch.
+	bool dog_box = false;
+	double synchro_nm = 25.0;
+	double gearbox_inertia = 0.012;
+	double shift_window_rpm = 900.0;
+	double dog_window_rpm = 2500.0;
 	double clutch_nm = 600.0;
 	double cda = 0.7;
 	bool has_eye = false;

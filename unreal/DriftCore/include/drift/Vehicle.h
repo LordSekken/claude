@@ -175,7 +175,12 @@ public:
 
 	void ShiftUp();
 	void ShiftDown();
-	void SetGear(int gear, bool instant = false);   // H-shifter: -1 R, 0 N, 1..GearCount(); instant = no shift delay (replay)
+	void SetGear(int gear, bool instant = false);   // -1 R, 0 N, 1..GearCount(); instant = no shift delay (replay)
+	// H-shifter lever position (-1 R, 0 N, 1..): pulls out of gear at once, then the new gear goes in
+	// through the synchro / dog model (see CarSpec::synchro_nm) - Gear() stays 0 until it does.
+	void SelectGear(int gear);
+	int SelectedGear() const { return select_gear_; }
+	bool Grinding() const { return grinding_; }   // lever in a gate the box refuses (revs not matched, clutch out)
 	double EngineTorque(double rpm, double throttle) const;
 
 private:
@@ -188,6 +193,8 @@ private:
 	void ResolveContacts(World& world);
 	void ComputeFfb(double dt);
 	double Ratio() const;
+	double GearRatio(int gear) const;
+	void UpdateSelector(double dt);
 	double DrivenOmega() const;
 	void AxleDiff(WheelState& l, WheelState& r, double t_in, double dt) const;
 	void CenterCoupling(double t_out, double dt);
@@ -210,6 +217,10 @@ private:
 	double engine_omega_ = 80.0;
 	double boost_ = 0.0;
 	double shift_timer_ = 0.0;
+	int select_gear_ = 1;
+	double input_omega_ = 0.0;   // clutch disc / gearbox input shaft, rad/s
+	double engage_time_ = 0.0;
+	bool grinding_ = false;
 	double limiter_timer_ = 0.0;
 	bool external_ = false;   // driven by external physics (ControlStep): it runs the limiter itself
 	double auto_shift_cooldown_ = 0.0;

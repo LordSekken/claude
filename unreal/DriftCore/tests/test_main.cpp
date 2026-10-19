@@ -437,6 +437,66 @@ void TestSetGear() {
 	CHECK(v.Gear() == 0, "neutral");
 }
 
+// Rolling at 20 m/s in `gear` with the engine on that gear's speed.
+Vehicle Rolling(const CarSpec& spec, World& w, int gear) {
+	Vehicle v = Settled(spec, w, 1.0);
+	v.SetGear(gear, true);
+	v.SetMotion(Vec3(0, 0, -20.0), Vec3());
+	for (int i = 0; i < 4; ++i) v.SetWheelOmega(i, 20.0 / v.Wheel(i).radius);
+	v.SetEngineRpm(20.0 / v.Wheel(2).radius * spec.gears[static_cast<size_t>(gear - 1)] * spec.final_drive * 60.0 / kTau);
+	return v;
+}
+
+void TestSynchro() {
+	FlatWorld w;
+	const double dt = 1.0 / 240.0;
+	// Clutch in, 3rd -> 2nd at 20 m/s (~1800 rpm to spin up): the synchro takes ~0.1 s.
+	{
+		Vehicle v = Rolling(TestCar(), w, 3);
+		v.in.auto_clutch = false;
+		v.in.clutch = 1.0;
+		v.SelectGear(2);
+		CHECK(v.Gear() == 0, "out of gear at once (%d)", v.Gear());
+		double t_in = -1.0;
+		Run(0.6, v, w, [&](double t) { if (t_in < 0.0 && v.Gear() == 2) t_in = t; }, dt);
+		CHECK(t_in > 0.05 && t_in < 0.25, "synchro downshift took %.3f s", t_in);
+		CHECK(!v.Grinding(), "no grind with the clutch in");
+	}
+	// Clutch out, 2nd -> 4th with ~2800 rpm mismatch: the box refuses (grind), stays neutral.
+	{
+		Vehicle v = Rolling(TestCar(), w, 2);
+		v.in.auto_clutch = false;
+		v.in.clutch = 0.0;
+		v.SelectGear(4);
+		Run(0.1, v, w, nullptr, dt);
+		CHECK(v.Gear() == 0 && v.Grinding(), "clutchless unmatched shift refused (gear %d grind %d)", v.Gear(), v.Grinding() ? 1 : 0);
+		v.in.clutch = 1.0;
+		Run(0.3, v, w, nullptr, dt);
+		CHECK(v.Gear() == 4 && !v.Grinding(), "goes in once the clutch is pressed (gear %d)", v.Gear());
+	}
+	// Clutch out but rev-matched (3rd -> 3rd's speed in 4th +- window): goes in.
+	{
+		CarSpec spec = TestCar();
+		spec.shift_window_rpm = 1200.0;
+		Vehicle v = Rolling(spec, w, 3);
+		v.in.auto_clutch = false;
+		v.SelectGear(4);
+		Run(0.1, v, w, nullptr, dt);
+		CHECK(v.Gear() == 4, "rev-matched clutchless upshift (gear %d)", v.Gear());
+	}
+	// Dog box: clutchless 3rd -> 4th in a few ms.
+	{
+		CarSpec spec = TestCar();
+		spec.dog_box = true;
+		Vehicle v = Rolling(spec, w, 3);
+		v.in.auto_clutch = false;
+		v.SelectGear(4);
+		double t_in = -1.0;
+		Run(0.2, v, w, [&](double t) { if (t_in < 0.0 && v.Gear() == 4) t_in = t; }, dt);
+		CHECK(t_in >= 0.0 && t_in < 0.03, "dog box shift took %.3f s", t_in);
+	}
+}
+
 void TestExampleSpecs() {
 	const char* files[] = {"legacy_rwd.json", "outback98_stock.json", "s14_sr20_drift.json", "miata_na_drift.json"};
 	for (const char* f : files) {
@@ -484,6 +544,7 @@ int main() {
 		{"stall restart", TestStallRestart},
 		{"car contact", TestCarContact},
 		{"set gear", TestSetGear},
+		{"synchro", TestSynchro},
 		{"example specs", TestExampleSpecs},
 	};
 	for (const T& t : tests) {
