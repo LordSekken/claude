@@ -45,6 +45,7 @@ struct CarSpec {
 	std::vector<double> curve_rpm, curve_nm;
 	double idle_rpm = 900.0;
 	double limiter_rpm = 7000.0;
+	double limiter_hz = 0.0;      // AC LIMITER_HZ: fuel-cut pulses of 1/hz; 0 = 60 ms cut
 	double engine_inertia = 0.18;
 	double coast_nm = 30.0;
 	bool turbo = false;

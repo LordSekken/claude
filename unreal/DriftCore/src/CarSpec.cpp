@@ -86,6 +86,7 @@ void CarSpec::FromJsonValue(const JsonValue& root, CarSpec& c) {
 	}
 	c.idle_rpm = v.Num("idle_rpm", c.idle_rpm);
 	c.limiter_rpm = v.Num("limiter_rpm", c.limiter_rpm);
+	c.limiter_hz = v.Num("limiter_hz", c.limiter_hz);
 	c.engine_inertia = v.Num("engine_inertia", c.engine_inertia);
 	c.coast_nm = v.Num("coast_nm", c.coast_nm);
 	c.turbo = v.Bool("turbo", c.turbo);

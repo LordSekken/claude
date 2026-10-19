@@ -82,7 +82,7 @@ def wishbone(susp, side, half_track, radius, wheel_rate, bump, rebound, hub_mass
         "Name": "AC %s DoubleWishbone" % side, "Type": "Suspension", "Template": "DoubleWishbone",
         "Camber Angle (deg)": num(s, "STATIC_CAMBER"),
         "Toe Angle (deg)": 0.0,
-        "Spindle": {"Mass": spindle_mass, "COM": [0, half_track, 0], "Inertia": [0.05, 0.08, 0.05],
+        "Spindle": {"Mass": spindle_mass, "COM": [0, half_track, 0], "Inertia": [0.05, 0.01, 0.05],   # spin inertia is the wheel+tyre's (AC ANGULAR_INERTIA)
                     "Radius": 0.1, "Width": 0.02},
         "Upright": {"Mass": upright_mass, "COM": [0, half_track - 0.08, 0],
                     "Moments of Inertia": [0.05, 0.05, 0.02], "Products of Inertia": [0, 0, 0], "Radius": 0.025},
@@ -100,7 +100,7 @@ def wishbone(susp, side, half_track, radius, wheel_rate, bump, rebound, hub_mass
                    "Free Length": 0.35, "Spring Coefficient": k},
         "Shock": {"Location Chassis": spring_chassis, "Location Arm": spring_arm,
                   "Damping Coefficient": (bump + rebound) / 2 / (mr * mr)},
-        "Axle": {"Inertia": 0.4},
+        "Axle": {"Inertia": 0.01},   # was 0.4: +48% rear spin inertia over AC (sluggish wheelspin / clutch kicks)
         "_motion_ratio": mr,
     }
 
@@ -131,6 +131,13 @@ def tir(path, t, spec_t, radius, width, ac_t):
         "PHY3": num(ac_t, "CAMBER_GAIN", 0.0) * 0.1, "PVY1": 0.0, "PVY2": 0.0, "PVY3": 0.0, "PVY4": 0.0,
         "PCX1": cx, "PDX1": mu_x, "PDX2": pdx2, "PEX1": 0.0, "PEX2": 0.0, "PEX3": 0.0, "PEX4": 0.0,
         "PKX1": bx * cx * mu_x, "PKX2": 0.0, "PKX3": 0.0, "PHX1": 0.0, "PHX2": 0.0, "PVX1": 0.0, "PVX2": 0.0,
+        # Relaxation lengths (DriftLab transient-slip patch) from AC's RELAXATION_LENGTH, floored at 0.1 m:
+        # sigma_alpha = PTY1 sin(2 atan(1/PTY2)) R0 at FNOMIN, sigma_kappa = PTX1 R0. The template tyre's
+        # ~0.5 m made the fronts answer countersteer ~35 ms late at 50 km/h (AC ~5 ms).
+        "PTY1": max(num(ac_t, "RELAXATION_LENGTH", 0.1), 0.1) / (math.sin(2 * math.atan(0.5)) * radius), "PTY2": 2.0,
+        # Longitudinal kept longer (0.4 m): a free-rolling front wheel's spin oscillated against a short
+        # sigma_kappa at walking pace (Fx +-2.5 kN -> rack-force spikes); countersteer bite is the lateral one.
+        "PTX1": 0.4 / radius, "PTX2": 0.0, "PTX3": 0.0,
         "LMUX": 1.0, "LMUY": 1.0, "LKX": 1.0, "LKY": 1.0,
     }
     out = []
@@ -214,6 +221,8 @@ def build_car(ac_dir, spec_path, out_root):
             "Name": "AC wheel", "Type": "Wheel", "Template": "Wheel", "Mass": wheel_mass,
             "Inertia": [0.3, inertia_total * 0.4, 0.3]})
         brake = sp["brake_torque"] * (sp["brake_bias"] if side == "FRONT" else 1 - sp["brake_bias"]) * 0.5
+        if side == "REAR":   # the rear brakes also do the handbrake's job (DLL scales the service share)
+            brake = max(brake, sp.get("handbrake_torque", 0.0) / 2)
         write(os.path.join(d, "Brake_%s.json" % side), {
             "Name": "AC brake", "Type": "Brake", "Template": "BrakeSimple", "Maximum Torque": brake})
         axles.append({
@@ -248,10 +257,13 @@ def build_car(ac_dir, spec_path, out_root):
     nm = sp["curve_nm"]
     write(os.path.join(d, "Engine.json"), {
         "Name": "AC engine", "Type": "Engine", "Template": "EngineSimpleMap",
-        "Maximal Engine Speed RPM": sp["limiter_rpm"],
-        "Map Full Throttle": [[-100, 0]] + [[r, t] for r, t in zip(rpm, nm)],
-        "Map Zero Throttle": [[-100, 0], [0, 0], [sp["idle_rpm"], 0],
-                              [sp["limiter_rpm"], -sp["coast_nm"]], [sp["limiter_rpm"] * 1.2, -sp["coast_nm"] * 1.5]],
+        # The DLL's limiter cuts fuel at limiter_rpm; Chrono's own max speed is only a clamp on the map
+        # lookup (at the limiter it kept giving full torque - no limiter at all), so put it well above.
+        "Maximal Engine Speed RPM": sp["limiter_rpm"] + 1500,
+        "Map Full Throttle": [[-100, 0]] + [[r, t] for r, t in zip(rpm, nm)] + [[sp["limiter_rpm"] + 1500, nm[-1] * 0.5]],
+        # Engine braking linear in rpm like AC's COAST_REF (0 at 0 rpm), continuing past the limiter.
+        "Map Zero Throttle": [[-100, 0], [0, 0], [sp["limiter_rpm"], -sp["coast_nm"]],
+                              [sp["limiter_rpm"] + 1500, -sp["coast_nm"] * (sp["limiter_rpm"] + 1500) / sp["limiter_rpm"]]],
     })
     write(os.path.join(d, "Transmission.json"), {
         "Name": "AC gearbox", "Type": "Transmission", "Template": "ManualTransmissionShafts",
@@ -278,6 +290,10 @@ def build_car(ac_dir, spec_path, out_root):
                                         "tire_rear": "%s/Tire_REAR.json" % cid,
                                         "steer_ratio": sp.get("model", {}).get("steer_ratio", 12.0),
                                         "steer_lock": sp["steer_lock"], "cda": sp.get("cda", 0.7),
+                                        "limiter_rpm": sp["limiter_rpm"], "limiter_hz": sp.get("limiter_hz", 0.0),
+                                        "idle_rpm": sp["idle_rpm"],
+                                        "handbrake_nm": sp.get("handbrake_torque", 0.0) / 2,   # per rear wheel
+                                        "rear_brake_nm": sp["brake_torque"] * (1 - sp["brake_bias"]) * 0.5,
                                         # DriftCore's body origin (mid-axles, wheel-centre height) in the
                                         # chassis reference frame, so models/cameras line up.
                                         "dc_origin": [(a - b) / 2, 0.0, (rf + rr) / 2],

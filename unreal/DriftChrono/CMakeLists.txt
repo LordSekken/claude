@@ -23,3 +23,10 @@ if(MSVC)
   set_target_properties(dc_smoke PROPERTIES MSVC_RUNTIME_LIBRARY ${CHRONO_MSVC_RUNTIME_LIBRARY})
 endif()
 add_CHRONO_DLLS_copy_command()
+
+# Standard vehicle-dynamics manoeuvres (ISO 4138 / 7401 / 7975, drift, engine) with pass/fail ranges.
+add_executable(dc_maneuvers tests/dc_maneuvers.cpp)
+target_link_libraries(dc_maneuvers PRIVATE DriftChrono)
+if(MSVC)
+  set_target_properties(dc_maneuvers PROPERTIES MSVC_RUNTIME_LIBRARY ${CHRONO_MSVC_RUNTIME_LIBRARY})
+endif()

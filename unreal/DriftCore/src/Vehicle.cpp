@@ -113,6 +113,7 @@ double Vehicle::EngineTorque(double rpm, double throttle) const {
 }
 
 int Vehicle::Step(double dt, World& world) {
+	external_ = false;   // our own physics again (e.g. after switching back from Chrono)
 	const double h = 1.0 / kBodyHz;
 	accumulator_ += dt;
 	if (accumulator_ > 0.25) accumulator_ = 0.25;   // don't spiral after a hitch
@@ -433,7 +434,9 @@ void Vehicle::DriverControls(double dt, double& throttle, double& brake, double&
 		boost_ += (target - boost_) * (dt / spec_.turbo_lag_s < 1.0 ? dt / spec_.turbo_lag_s : 1.0);
 	}
 
-	if (rpm_now > limiter) limiter_timer_ = 0.06;   // fuel cut
+	// Fuel cut: AC pulses at LIMITER_HZ (BDC Miata: 33 Hz, the fast "brap"); otherwise 60 ms.
+	// (External physics runs its own limiter at its physics rate - see ControlStep.)
+	if (!external_ && rpm_now > limiter && limiter_timer_ <= 0.0) limiter_timer_ = spec_.limiter_hz > 1.0 ? 1.0 / spec_.limiter_hz : 0.06;
 	if (limiter_timer_ > 0.0) {
 		limiter_timer_ -= dt;
 		throttle = 0.0;
@@ -459,6 +462,7 @@ void Vehicle::DriverControls(double dt, double& throttle, double& brake, double&
 }
 
 Vehicle::Controls Vehicle::ControlStep(double dt) {
+	external_ = true;
 	UpdateSteering(dt);
 	Controls c;
 	DriverControls(dt, c.throttle, c.brake, c.engage);

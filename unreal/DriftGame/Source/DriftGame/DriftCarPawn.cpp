@@ -565,11 +565,12 @@ bool ADriftCarPawn::ReadWheel()
 			bShifterUsed = true;
 			bAutoShift = false;
 			// A gate the car doesn't have (6th on a 5-speed) is neutral.
-			Vehicle->SetGear(Gear > Vehicle->GearCount() ? 0 : Gear);
+			// H-shifter + real clutch: the gate change is instant (no auto-shift throttle cut / clutch hold).
+			Vehicle->SetGear(Gear > Vehicle->GearCount() ? 0 : Gear, true);
 		}
 		else if (bShifterUsed)
 		{
-			Vehicle->SetGear(0);
+			Vehicle->SetGear(0, true);
 		}
 	}
 	return true;

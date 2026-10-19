@@ -245,6 +245,7 @@ static int find_ffb(void) {
 }
 
 static float shown_force = 0, shown_damper = -1, shown_spring = -1;
+static unsigned restarts = 0;   /* DI_EFFECTRESTARTED count (each one is a torque dropout) */
 
 /* After a lost device (another app grabbed it, sleep, unplug): re-acquire and restart. */
 static void ff_recover(HRESULT hr) {
@@ -264,8 +265,19 @@ static void ff_apply(float f, float d, float s) {
 		 * only from the direction vector (+1 pushes the G920 left), so send
 		 * |force| and put the side in the direction. */
 		cf.lMagnitude = (LONG)(SDL_fabsf(SDL_clamp(f, -1.0f, 1.0f)) * DI_FFNOMINALMAX);
-		ff_dir[0] = f >= 0.0f ? -1 : 1;
-		HRESULT hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, DIEP_TYPESPECIFICPARAMS | DIEP_DIRECTION);
+		const LONG dir = f >= 0.0f ? -1 : 1;
+		/* Update the playing effect in place (DIEP_NORESTART) and only send the direction when the
+		 * side flips: re-sending it every update can make the driver restart the effect, dropping
+		 * torque right when a drift changes direction. If the driver needs a restart for this
+		 * change it says DIERR_EFFECTPLAYING - then do it the old way. */
+		DWORD flags = DIEP_TYPESPECIFICPARAMS | DIEP_NORESTART;
+		if (dir != ff_dir[0]) {
+			ff_dir[0] = dir;
+			flags |= DIEP_DIRECTION;
+		}
+		HRESULT hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, flags);
+		if (hr == DIERR_EFFECTPLAYING) hr = fx_const->lpVtbl->SetParameters(fx_const, &eff_const, flags & ~(DWORD)DIEP_NORESTART);
+		if (hr == DI_EFFECTRESTARTED) restarts++;
 		if (FAILED(hr)) ff_recover(hr);
 		else shown_force = f;
 	}
@@ -480,8 +492,8 @@ int main(int argc, char **argv) {
 				wheel = *(const LONG *)((const unsigned char *)&js + in_axis_ofs[0]) / 32767.0f;
 			else if (wheel_js)
 				wheel = SDL_GetJoystickAxis(wheel_js, 0) / 32767.0f;
-			logmsg("trace t=%llu force=%+.3f damper=%.2f spring=%.2f dir=%ld mag=%ld wheel=%+.3f",
-				(unsigned long long)now, f, d, s, (long)ff_dir[0], (long)cf.lMagnitude, wheel);
+			logmsg("trace t=%llu force=%+.3f damper=%.2f spring=%.2f dir=%ld mag=%ld wheel=%+.3f restarts=%u",
+				(unsigned long long)now, f, d, s, (long)ff_dir[0], (long)cf.lMagnitude, wheel, restarts);
 		}
 		SDL_Delay(2);
 	}

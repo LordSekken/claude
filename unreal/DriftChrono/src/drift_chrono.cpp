@@ -256,6 +256,8 @@ struct dc_car {
     DriverInputs last_in{0, 0, 0, 0};
     bool have_last_in = false;
     double rack_avg = 0;
+    double limiter_rpm = 1e9, limiter_hz = 0, cut_timer = 0, idle_rpm = 900;   // fuel-cut limiter, run per 1 ms step
+    double rear_brake_nm = 0, handbrake_nm = 0;                // rear brakes double as the handbrake
     double accumulator = 0;
     double spin[4] = {0, 0, 0, 0};
     unsigned int contact_acc = 0;
@@ -329,6 +331,11 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
         return fail(std::string("Chrono: ") + e.what());
     }
     c->lock = JsonNum(car, "steer_lock", 0.9);
+    c->limiter_rpm = JsonNum(car, "limiter_rpm", 1e9);
+    c->limiter_hz = JsonNum(car, "limiter_hz", 0.0);
+    c->idle_rpm = JsonNum(car, "idle_rpm", 900.0);
+    c->rear_brake_nm = JsonNum(car, "rear_brake_nm", 0.0);
+    c->handbrake_nm = JsonNum(car, "handbrake_nm", 0.0);
     c->forward_gears =
         static_cast<int>(JsonVec(ReadFile(GetVehicleDataFile(JsonStr(car, "transmission"))), "Forward Gear Ratios").size());
     c->veh->GetChassis()->SetAerodynamicDrag(JsonNum(car, "cda", 0.7), 1.0, 1.2);
@@ -428,7 +435,11 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
     in.m_throttle = std::clamp(ctl->throttle, 0.0, 1.0);
     in.m_braking = std::clamp(ctl->brake, 0.0, 1.0);
     in.m_clutch = neutral ? 1.0 : std::clamp(1.0 - ctl->clutch_engage, 0.0, 1.0);
-    const double rear_brake = std::max(in.m_braking, std::clamp(ctl->handbrake, 0.0, 1.0));
+    const double handbrake = std::clamp(ctl->handbrake, 0.0, 1.0);
+    // The rear brakes are sized for the handbrake (max of service share and AC's HANDBRAKE_TORQUE);
+    // the pedal only ever uses the service share of them.
+    const double rear_max = std::max(car->rear_brake_nm, car->handbrake_nm);
+    const double service_share = rear_max > 0 ? car->rear_brake_nm / rear_max : 1.0;
 
     // At most 30 ms of physics per frame (~9 ms of work): after a slow frame (loading, a hitch)
     // the game briefly runs slow instead of catching up, which would make the next frame slower
@@ -447,12 +458,25 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
         const double k = std::min(1.0, (steps + 1.0) / frame_steps);
         in.m_steering = from.m_steering + (target.m_steering - from.m_steering) * k;
         in.m_throttle = from.m_throttle + (target.m_throttle - from.m_throttle) * k;
+        // Rev limiter at physics rate: AC-style fuel-cut pulses of 1/LIMITER_HZ (33 Hz on the BDC
+        // Miata), never smeared across a frame. Chrono's own max speed is only a map clamp.
+        const double rpm = car->veh->GetEngine()->GetMotorSpeed() * 60.0 / CH_2PI;
+        if (rpm > car->limiter_rpm && car->cut_timer <= 0) car->cut_timer = car->limiter_hz > 1 ? 1.0 / car->limiter_hz : 0.06;
+        if (car->cut_timer > 0) {
+            in.m_throttle = 0;
+            car->cut_timer -= kStep;
+        }
+        // Idle governor at physics rate (like VDrift / BeamNG): a throttle floor that rises as the engine
+        // drops below idle, so it holds ~idle and picks itself back up instead of sitting at 0 rpm.
+        if (car->cut_timer <= 0 && rpm < car->idle_rpm)
+            in.m_throttle = std::max(in.m_throttle, std::clamp((car->idle_rpm - rpm) / 250.0, 0.0, 0.6));
         in.m_braking = from.m_braking + (target.m_braking - from.m_braking) * k;
         car->veh->Synchronize(t, in, car->terrain);
-        if (rear_brake > in.m_braking) {
+        {
+            const double rear = std::max(in.m_braking * service_share, handbrake);
             auto axle = car->veh->GetAxle(1);
-            if (axle->m_brake_left) axle->m_brake_left->Synchronize(t, rear_brake);
-            if (axle->m_brake_right) axle->m_brake_right->Synchronize(t, rear_brake);
+            if (axle->m_brake_left) axle->m_brake_left->Synchronize(t, rear);
+            if (axle->m_brake_right) axle->m_brake_right->Synchronize(t, rear);
         }
         ApplyContacts(car);
         car->veh->Advance(kStep);

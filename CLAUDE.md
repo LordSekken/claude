@@ -135,6 +135,26 @@ vite files) is an unrelated web app.
 - Headless UE tests: `drift.AutoThrottle/AutoSteer/PhysicsLog/NoWheel/UseDriftCore` cvars (set NoWheel before
   Play so tests never drive the owner's G920). Headless editor runs ~3 fps (RenderOffscreen).
 
+### Physics/feel batch (2026-10-19, from 8 research/audit agents)
+- Owner: "feels obviously wrong" - AC countersteer tracks drift ~1:1 (0.67 lock at 40-50 deg), ours ~0.31; car spins;
+  "doesn't rev right"; no sound. Grip driving matched AC.
+- Fixed (audit-confirmed): importer power.lut /0.87 (+15% torque) removed; COAST_REF imported (95 Nm, was 33);
+  clutch MAX_TORQUE imported (800, was 389); LIMITER_HZ fuel-cut pulses (33 Hz) - in DriftCore and per 1 ms step in
+  DriftChrono (Chrono's EngineSimpleMap max speed was a soft wall = no limiter; max speed now limiter+1500 and
+  zero-throttle map linear like AC); idle governor per step in DLL (idled at 0 rpm before); turbo lag from AC LAG_UP;
+  H-shifter SetGear(instant) (was 0.2 s auto-shift cut + clutch hold); Chrono handbrake = AC HANDBRAKE_TORQUE via rear
+  brakes (was 39%); axle/spindle spin inertia removed (+48% rear); lateral relaxation from AC RELAXATION_LENGTH
+  (floor 0.1 m; template 0.47 m), longitudinal 0.4 m (shorter oscillated a free front wheel -> rack spikes);
+  FFB damper 0 at speed; ffb_helper SetParameters with DIEP_NORESTART + direction only on sign flip (restart count traced).
+- `unreal/DriftChrono/tests/dc_maneuvers.cpp`: ISO-style manoeuvres with real-car ranges (17/21 pass: braking 38 m
+  100-0, drift hold 27 deg with countersteer/drift 0.7, idle 877, limiter in gear; fails: yaw phase lag 47 deg at 1 Hz,
+  free-rev 16k rpm/s = AC's inertia, drift initiation transient).
+- Still to do (research consensus): FFB = kingpin moment from per-wheel tyre forces through the AC hardpoint geometry
+  (mechanical trail keeps it restoring past peak) instead of the averaged AcCurve; FFB loop at >=333 Hz (helper
+  extrapolates T0 + dT/dtheta at 1 kHz); G920 min-force/LUT compensation; per-wheel surface + road texture in FFB;
+  sound: `DriftAudio.h/.cpp` (UDriftEngineSynth, procedural engine + tyre synth, compiled but NOT wired/tested);
+  camber in Pac02 (gamma never set); turbo boost into Chrono.
+
 ## Drift circuit generator (2026-10-18)
 `drift-sim/scripts/track/drift_circuit_generator.gd` (DriftCircuitGenerator.generate({seed, length, width, scale,
 flow, elevation})) -> TrackSpec dict (+ "corners" sheet: kind, radius, angle, drift speed sqrt(0.75 g R)).

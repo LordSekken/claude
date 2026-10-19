@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < 800; ++i) {
             dc_step(car, 0.01, &c, nullptr, 0);
             dc_get_state(car, &s);
-            c.throttle = Speed(s) > 12 / 3.6 ? 0.15 : 0.4;   // hold ~12 km/h, keep pushing at the kerb
+            c.throttle = Speed(s) > 12 / 3.6 ? 0.15 : (Speed(s) < 2 / 3.6 ? 0.8 : 0.4);   // ~12 km/h; push hard if stopped at the kerb
             max_roll = std::fmax(max_roll, std::fabs(std::asin(std::fmin(1.0, std::fabs(s.rot[1])))) * 57.3);   // right.y
             for (auto& w : s.wheel) max_fz = std::fmax(max_fz, w.fz);
             top_y = std::fmax(top_y, s.origin[1]);

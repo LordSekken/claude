@@ -209,6 +209,7 @@ private:
 	double boost_ = 0.0;
 	double shift_timer_ = 0.0;
 	double limiter_timer_ = 0.0;
+	bool external_ = false;   // driven by external physics (ControlStep): it runs the limiter itself
 	double auto_shift_cooldown_ = 0.0;
 	double steer_angle_ = 0.0;
 	double drift_angle_ = 0.0;

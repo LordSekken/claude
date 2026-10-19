@@ -43,21 +43,29 @@ static func import_folder(dir: String) -> Dictionary:
 			boost = minf(boost, wg)
 	var limiter := AcIni.f(eng, "ENGINE_DATA", "LIMITER", 7000.0)
 	var idle := AcIni.f(eng, "ENGINE_DATA", "MINIMUM", 900.0)
-	# AC's power.lut is the naturally-aspirated curve, roughly at the wheels;
-	# boost multiplies it by (1 + boost). Convert to crank torque at stock boost.
+	# AC's power.lut is the naturally-aspirated curve; AC's physics applies it as
+	# lut x (1 + boost) at the engine with no drivetrain losses, and neither of
+	# our models has losses either - so take it as is (a /0.87 "crank" conversion
+	# made the car 15% stronger than in AC).
 	var curve := []
 	for p: Array in lut:
 		if float(p[0]) < idle * 0.8 or float(p[0]) > limiter + 600.0:
 			continue
-		curve.append([float(p[0]), snappedf(float(p[1]) * (1.0 + boost) / 0.87, 0.1)])
+		curve.append([float(p[0]), snappedf(float(p[1]) * (1.0 + boost), 0.1)])
 	if curve.size() < 3:
 		curve = lut
 	var engine := {
 		"id": car_id + "_engine", "name": name + " engine (AC import)",
 		"mass_kg": 160.0, "idle_rpm": idle, "limiter_rpm": limiter, "max_safe_rpm": limiter + 300.0,
 		"aspiration": "turbo" if boost > 0.0 else "na", "boost_bar": boost, "max_boost_bar": maxf(boost * 1.4, boost + 0.2),
-		"spool_rpm": AcIni.f(eng, "TURBO_0", "REFERENCE_RPM", 3500.0) * 0.8, "turbo_lag_s": 0.5,
+		"spool_rpm": AcIni.f(eng, "TURBO_0", "REFERENCE_RPM", 3500.0) * 0.8,
+		# AC blends boost by LAG_UP per 333 Hz physics step: time constant -1 / (333 ln LAG_UP).
+		"turbo_lag_s": clampf(-1.0 / (333.0 * log(clampf(AcIni.f(eng, "TURBO_0", "LAG_UP", 0.985), 0.5, 0.9999))), 0.05, 3.0),
 		"inertia": AcIni.f(eng, "ENGINE_DATA", "INERTIA", 0.18),
+		# AC's engine braking: linear from 0 to COAST_REF TORQUE at COAST_REF RPM (NON_LINEARITY 0).
+		"coast_torque_nm": AcIni.f(eng, "COAST_REF", "TORQUE", 0.0) * limiter / maxf(AcIni.f(eng, "COAST_REF", "RPM", limiter), 1.0),
+		# AC cuts fuel in pulses of 1 / LIMITER_HZ at the limiter.
+		"limiter_hz": AcIni.f(eng, "ENGINE_DATA", "LIMITER_HZ", 0.0),
 		"torque_curve": curve,
 		"notes": "Imported from Assetto Corsa %s/%s." % [car_dir.get_file(), lut_name],
 	}
@@ -73,6 +81,7 @@ static func import_folder(dir: String) -> Dictionary:
 		"reverse_ratio": absf(AcIni.f(drv, "GEARS", "GEAR_R", -3.3)),
 		"max_torque_nm": 0, "mass_kg": 50.0,
 		"shift_time_s": AcIni.f(drv, "GEARBOX", "CHANGE_UP_TIME", 180.0) / 1000.0,
+		"clutch_max_torque_nm": AcIni.f(drv, "CLUTCH", "MAX_TORQUE", 0.0),
 	}
 
 	# --- Chassis ------------------------------------------------------------
