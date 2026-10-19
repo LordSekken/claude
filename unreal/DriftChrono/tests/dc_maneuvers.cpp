@@ -596,9 +596,9 @@ void TestPowerOversteer(Sim& m, bool then_hold) {
             min_d = std::min(min_d, d), max_d = std::max(max_d, d);
         }
         if (std::fmod(m.t - t1, 1.0) < kDt * 0.99)
-            std::printf("    t %4.1f drift %6.1f  counter-steer %6.1f deg (road wheel)  thr %.2f  %5.0f rpm g%d  %5.1f km/h  front slip %+.1f\n",
+            std::printf("    t %4.1f drift %6.1f  counter-steer %6.1f deg (road wheel)  thr %.2f  %5.0f rpm g%d  %5.1f km/h  front slip %+.1f  column %+.2f Nm\n",
                         m.t - t1, d, -m.steer * kDeg, m.c.throttle, m.s.rpm, m.s.gear, m.speed * 3.6,
-                        0.5 * (m.s.wheel[0].slip_angle + m.s.wheel[1].slip_angle) * kDeg);
+                        0.5 * (m.s.wheel[0].slip_angle + m.s.wheel[1].slip_angle) * kDeg, m.s.steer_torque);
     }
     auto mean = [](const std::vector<double>& x) {
         double s = 0;
@@ -709,6 +709,96 @@ void TestEngine(Sim& m) {
     Info("0.2 s blip from rest: start", blip0, "rpm");
     Info("0.2 s blip from rest: peak", blip_peak, "rpm");
 }
+// 8. Rim in the loop: start and settle a drift with the test driver, then hand the steering to a
+// simulated G920 rim driven only by force feedback (column torque scaled to the wheel's motor);
+// the driver keeps the throttle. A real car's wheel winds into countersteer by itself (front
+// wheels follow the direction of travel); in Assetto Corsa the owner's countersteer tracks the
+// drift angle ~1:1. Hands-off and light-hands (extra damping) variants.
+void TestRimLoop(Sim& m, double hand_damping, const char* label, double t_ref) {
+    std::printf("\n== 8. Rim in the loop (%s): simulated G920 driven by the column torque, %.0f Nm = full force ==\n", label, t_ref);
+    const double v = 40 / 3.6;
+    m.Launch(v, 0.5, 2);
+    m.autoshift = false;
+    m.c.gear = 2;
+    m.c.clutch_engage = 1;
+    CircleCtl pc;
+    pc.Start(m, 30, +1);
+    for (int i = 0; i < 600; ++i) {
+        m.c.steer_angle = Clamp(pc.Steer(m), -m.lock, m.lock);
+        m.Cruise(v);
+        m.Step();
+    }
+    const double steer0 = m.c.steer_angle;
+    const double t0 = m.t;
+    while (m.t - t0 < 5.0 && DriftAngle(m) < 30) {
+        m.c.throttle = 1, m.c.steer_angle = steer0;
+        m.Step();
+    }
+    const double target = 30, ratio = 8.5;
+    double th_i = 0.7, prev = DriftAngle(m), dd = 0;
+    // Settle with the test driver for 3 s.
+    for (int i = 0; i < 300; ++i) {
+        const double d = DriftAngle(m);
+        dd += 0.3 * ((d - prev) / kDt - dd);
+        prev = d;
+        const double err = d - target;
+        m.c.steer_angle = Clamp(-(1.0 * d + 0.6 * err + 0.08 * dd) / kDeg, -m.lock, m.lock);
+        th_i = Clamp(th_i - 0.02 * err * kDt, 0.2, 1.0);
+        m.c.throttle = Clamp(th_i - 0.03 * err - 0.004 * dd, 0, 1);
+        m.c.gear = m.s.rpm > 7300 ? 3 : (m.s.rpm < 3500 && m.c.gear == 3 ? 2 : m.c.gear);
+        m.Step();
+    }
+    std::printf("  hand-over: drift %.1f deg, counter-steer %.1f deg, %.1f km/h, column %+.1f Nm\n", DriftAngle(m), -m.steer * kDeg,
+                m.speed * 3.6, m.s.steer_torque);
+    // G920: ~2.2 Nm motor, rim + motor inertia ~0.035 kg m^2, gear drag ~0.03 N m s/rad + ~0.04 N m Coulomb.
+    const double J = 0.035, b = 0.03 + hand_damping, coul = 0.04, tmax = 2.2;
+    double th = m.c.steer_angle * ratio, w = 0;   // rim angle (rad, + right) and speed
+    std::vector<double> dv, sv, fsv;
+    bool spun = false;
+    const double t1 = m.t;
+    while (m.t - t1 < 8.0) {
+        const double d = DriftAngle(m);
+        dd += 0.3 * ((d - prev) / kDt - dd);
+        prev = d;
+        const double err = d - target;
+        th_i = Clamp(th_i - 0.02 * err * kDt, 0.2, 1.0);
+        m.c.throttle = Clamp(th_i - 0.03 * err - 0.004 * dd, 0, 1);
+        m.c.gear = m.s.rpm > 7300 ? 3 : (m.s.rpm < 3500 && m.c.gear == 3 ? 2 : m.c.gear);
+        // Rim dynamics over the frame (10 substeps).
+        const double motor = Clamp(m.s.steer_torque / t_ref, -1, 1) * tmax;
+        for (int k = 0; k < 10; ++k) {
+            const double h = kDt / 10;
+            double tq = motor - b * w;
+            if (std::fabs(w) > 1e-3) tq -= coul * (w > 0 ? 1 : -1);
+            else if (std::fabs(tq) < coul) tq = 0;
+            w += tq / J * h;
+            th += w * h;
+            const double lim = m.lock * ratio;
+            if (std::fabs(th) > lim) th = Clamp(th, -lim, lim), w = 0;
+        }
+        m.c.steer_angle = th / ratio;
+        m.Step();
+        if (std::fabs(d) > 100 || m.speed < 2) { spun = true; break; }
+        if (m.t - t1 > 2.0) {
+            dv.push_back(d), sv.push_back(-m.steer * kDeg);
+            fsv.push_back(0.5 * (m.s.wheel[0].slip_angle + m.s.wheel[1].slip_angle) * kDeg);
+        }
+        if (std::fmod(m.t - t1, 1.0) < kDt * 0.99)
+            std::printf("    t %4.1f drift %6.1f  counter-steer %6.1f deg (road wheel)  rim %+6.0f deg  ffb %+.2f  front slip %+.1f\n",
+                        m.t - t1, d, -m.steer * kDeg, th * kDeg, motor / tmax,
+                        0.5 * (m.s.wheel[0].slip_angle + m.s.wheel[1].slip_angle) * kDeg);
+    }
+    auto mean = [](const std::vector<double>& x) {
+        double s = 0;
+        for (double v : x) s += v;
+        return x.empty() ? NAN : s / x.size();
+    };
+    Info("mean drift angle", mean(dv), "deg");
+    Info("mean counter-steer (road wheel)", mean(sv), "deg");
+    Info("mean front slip angle", mean(fsv), "deg");
+    Metric("drift held with the rim on its own (no spin)", spun ? 0 : 1, 1, 1, "bool", "real cars / AC: the wheel self-steers");
+    Metric("rim counter-steer / drift angle", mean(sv) / mean(dv), 0.7, 1.3, "ratio", "owner's AC telemetry; kinematics");
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -724,11 +814,11 @@ int main(int argc, char** argv) {
         return 1;
     }
     dc_set_ground(m.car, Flat, nullptr);
-    bool run[8] = {};
-    if (argc == 3) std::fill(run, run + 8, true);
+    bool run[9] = {};
+    if (argc == 3) std::fill(run, run + 9, true);
     for (int i = 3; i < argc; ++i) {
         const int k = std::atoi(argv[i]);
-        if (k >= 1 && k <= 7) run[k] = true;
+        if (k >= 1 && k <= 8) run[k] = true;
     }
     const auto w0 = std::chrono::steady_clock::now();
     m.Reset();
@@ -740,6 +830,9 @@ int main(int argc, char** argv) {
     if (run[5]) TestPowerOversteer(m, false);
     if (run[6]) TestPowerOversteer(m, true);
     if (run[7]) TestEngine(m);
+    const double t_ref = std::getenv("DC_FFB_TREF") ? std::atof(std::getenv("DC_FFB_TREF")) : 80.0;
+    if (run[8]) TestRimLoop(m, 0.0, "hands off", t_ref);
+    if (run[8]) TestRimLoop(m, 0.15, "light hands", t_ref);
     const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now() - w0).count();
     std::printf("\n%d passed, %d failed (%.0f s wall)\n", g_pass, g_fail, wall);
     dc_destroy(m.car);

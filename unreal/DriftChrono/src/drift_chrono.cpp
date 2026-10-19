@@ -25,6 +25,7 @@
 #include "chrono_vehicle/ChTerrain.h"
 #include "chrono_vehicle/ChVehicleDataPath.h"
 #include "chrono_vehicle/utils/ChUtilsJSON.h"
+#include "chrono_vehicle/wheeled_vehicle/suspension/ChDoubleWishbone.h"
 #include "chrono_vehicle/wheeled_vehicle/vehicle/WheeledVehicle.h"
 
 using namespace chrono;
@@ -256,6 +257,8 @@ struct dc_car {
     DriverInputs last_in{0, 0, 0, 0};
     bool have_last_in = false;
     double rack_avg = 0;
+    double torque_avg = 0;
+    double steer_ratio = 12.0;   // steering-wheel angle per road-wheel angle
     double limiter_rpm = 1e9, limiter_hz = 0, cut_timer = 0, idle_rpm = 900;   // fuel-cut limiter, run per 1 ms step
     double rear_brake_nm = 0, handbrake_nm = 0;                // rear brakes double as the handbrake
     double accumulator = 0;
@@ -272,6 +275,25 @@ std::shared_ptr<ChWheel> WheelAt(const dc_car* c, int i) {
 }
 
 ChFrame<> ChassisRef(const dc_car* c) { return c->veh->GetChassisBody()->GetFrameRefToAbs(); }
+
+// Steering-column torque (N m, + = turns the rim right). Each front tyre's force and moment (at the
+// wheel centre, normal load included) taken about that wheel's kingpin axis (lower -> upper ball
+// joint), summed and divided by the steering ratio. Mechanical trail x Fy keeps it restoring past the
+// tyres' peak, which is what winds the rim into countersteer.
+double ColumnTorque(dc_car* c) {
+    auto dwb = std::dynamic_pointer_cast<ChDoubleWishbone>(c->veh->GetAxle(0)->m_suspension);
+    if (!dwb) return 0.0;
+    double about_kingpins = 0.0;   // + = steers the wheels left (ISO, Z up)
+    for (auto side : {LEFT, RIGHT}) {
+        auto tire = c->veh->GetWheel(0, side)->GetTire();
+        if (!tire) continue;
+        const ChVector3d lbj = dwb->GetBallJointPosLCA(side);
+        const ChVector3d k = (dwb->GetBallJointPosUCA(side) - lbj).GetNormalized();
+        const TerrainForce f = tire->ReportTireForce(&c->terrain);   // force + moment at the wheel centre, global
+        about_kingpins += Vdot(k, Vcross(f.point - lbj, f.force) + f.moment);
+    }
+    return -about_kingpins / c->steer_ratio;
+}
 
 void ApplyContacts(dc_car* c) {
     auto body = c->veh->GetChassisBody();
@@ -332,6 +354,7 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
     }
     c->lock = JsonNum(car, "steer_lock", 0.9);
     c->limiter_rpm = JsonNum(car, "limiter_rpm", 1e9);
+    c->steer_ratio = std::max(1.0, JsonNum(car, "steer_ratio", 12.0));
     c->limiter_hz = JsonNum(car, "limiter_hz", 0.0);
     c->idle_rpm = JsonNum(car, "idle_rpm", 900.0);
     c->rear_brake_nm = JsonNum(car, "rear_brake_nm", 0.0);
@@ -452,7 +475,7 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
     const DriverInputs from = car->have_last_in ? car->last_in : target;
     const int frame_steps = std::max(1, static_cast<int>(car->accumulator / kStep));
     int steps = 0;
-    double rack_sum = 0;
+    double rack_sum = 0, torque_sum = 0;
     while (car->accumulator >= kStep) {
         const double t = sys->GetChTime();
         const double k = std::min(1.0, (steps + 1.0) / frame_steps);
@@ -481,6 +504,7 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
         ApplyContacts(car);
         car->veh->Advance(kStep);
         if (car->rack) rack_sum += -car->rack->GetReaction2().force.x();
+        torque_sum += ColumnTorque(car);
         for (int i = 0; i < 4; ++i) {
             auto sp = WheelAt(car, i)->GetSpindle();
             const ChVector3d left = car->veh->GetChassisBody()->GetRot().GetAxisY();
@@ -490,6 +514,7 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
         ++steps;
     }
     if (steps) car->rack_avg = rack_sum / steps;   // the frame's mean: what a wheel can render
+    if (steps) car->torque_avg = torque_sum / steps;
     car->last_in = target;
     car->have_last_in = true;
     car->last_us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
@@ -540,6 +565,7 @@ DC_API void dc_get_state(const dc_car* car, dc_state* s) {
     // The actuator locks X only; its reaction is what holds the rack, so the road load is minus that
     // (checked by dc_smoke: steering right, the tyres push the rack back to the left).
     s->rack_force = car->rack_avg;
+    s->steer_torque = car->torque_avg;
     s->steer_lock = car->lock;
     s->sim_time = car->veh->GetSystem()->GetChTime();
 }

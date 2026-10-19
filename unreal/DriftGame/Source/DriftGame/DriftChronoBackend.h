@@ -24,6 +24,8 @@ public:
 	double LastStepMs() const { return LastMs; }
 	// Rack force (N) for full force feedback ([DriftChrono] FfbSource=Rack); 0 = AC's FFB curve.
 	double RackForceRef = 0.0;
+	// Steering-column torque (N m) for full force feedback ([DriftChrono] FfbSource=Kingpin, FfbSteerTorque).
+	double SteerTorqueRef = 0.0;
 
 private:
 	FDriftChrono() = default;

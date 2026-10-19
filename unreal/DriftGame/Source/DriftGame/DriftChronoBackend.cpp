@@ -104,11 +104,15 @@ TUniquePtr<FDriftChrono> FDriftChrono::Create(const FString& CarId, FString& Out
 	GApi.SetGround(Car, &FDriftChrono::Raycast, C.Get());
 	// [DriftChrono] FfbSource=AcCurve (default: AC's measured force-vs-front-slip curve on Chrono's
 	// tyres) or Rack (Chrono's steering-rack load, FfbRackForce N = full force).
-	FString Source = TEXT("AcCurve");
+	FString Source = TEXT("Kingpin");
 	GConfig->GetString(TEXT("DriftChrono"), TEXT("FfbSource"), Source, GGameIni);
 	double Ref = 8000.0;
 	GConfig->GetDouble(TEXT("DriftChrono"), TEXT("FfbRackForce"), Ref, GGameIni);
 	C->RackForceRef = Source.Equals(TEXT("Rack"), ESearchCase::IgnoreCase) ? FMath::Max(Ref, 100.0) : 0.0;
+	// Kingpin (default): the column torque from the front tyres' forces about each kingpin axis.
+	double TorqueRef = 50.0;
+	GConfig->GetDouble(TEXT("DriftChrono"), TEXT("FfbSteerTorque"), TorqueRef, GGameIni);
+	C->SteerTorqueRef = Source.Equals(TEXT("Kingpin"), ESearchCase::IgnoreCase) ? FMath::Max(TorqueRef, 1.0) : 0.0;
 	UE_LOG(LogDriftChrono, Log, TEXT("Chrono physics for %s"), *CarId);
 	return C;
 }
@@ -213,5 +217,7 @@ void FDriftChrono::Step(double Dt, drift::Vehicle& Vehicle, FDriftUnrealWorld& I
 	E.rpm = S.rpm;
 	E.rack_force = S.rack_force;
 	E.rack_force_ref = RackForceRef;
+	E.steer_torque = S.steer_torque;
+	E.steer_torque_ref = SteerTorqueRef;
 	Vehicle.ApplyExternal(E, Dt);
 }

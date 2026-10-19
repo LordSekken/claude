@@ -91,8 +91,9 @@ int main(int argc, char** argv) {
     c.steer_angle = 0.15;
     for (int i = 0; i < 150; ++i) dc_step(car, 0.01, &c, nullptr, 0);
     dc_get_state(car, &s);
-    std::printf("steer right 8.6 deg: yaw rate %+.3f, wheel steer FL %+.1f FR %+.1f deg, rack force %+.0f N, lat Fy FL %+.0f\n",
-                s.ang_vel[1], s.wheel[0].steer * 57.3, s.wheel[1].steer * 57.3, s.rack_force, s.wheel[0].fy);
+    std::printf("steer right 8.6 deg: yaw rate %+.3f, wheel steer FL %+.1f FR %+.1f deg, rack force %+.0f N, lat Fy FL %+.0f, column torque %+.2f Nm\n",
+                s.ang_vel[1], s.wheel[0].steer * 57.3, s.wheel[1].steer * 57.3, s.rack_force, s.wheel[0].fy, s.steer_torque);
+    Check(s.steer_torque < -0.3, "column torque pulls the rim back left (self-aligning) in a right turn");
     Check(s.ang_vel[1] < -0.1, "turns right (negative yaw rate about +y)");
     Check(s.wheel[0].steer > 0.05 && s.wheel[1].steer > 0.05, "front wheels steer right (+)");
     Check(s.rack_force < -500, "road pushes the rack back towards centre (self-aligning)");

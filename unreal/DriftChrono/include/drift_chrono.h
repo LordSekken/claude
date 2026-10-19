@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-#define DC_VERSION 1
+#define DC_VERSION 2
 
 typedef struct dc_car dc_car;
 
@@ -72,6 +72,9 @@ typedef struct dc_state {
     double rpm;
     int gear;
     double rack_force;     /* steering rack force, N, + = pushes the wheels to the right */
+    double steer_torque;   /* steering-column torque, N m, + = turns the rim to the right: the front
+                              tyres' forces and moments about each kingpin axis (ball joints), times
+                              d(road-wheel angle)/d(rim angle) - caster trail, KPI, scrub and Mz included */
     double steer_lock;     /* road-wheel angle at full steering input, rad */
     double sim_time;
 } dc_state;

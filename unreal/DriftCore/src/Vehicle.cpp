@@ -505,13 +505,21 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 
 	// Force feedback: AC's measured curve on the external model's front slip and load (rack_force_ref
 	// <= 0, the default), or the external model's own steering-rack load.
-	if (s.rack_force_ref <= 0.0) {
+	if (s.rack_force_ref <= 0.0 && s.steer_torque_ref <= 0.0) {
 		ComputeFfb(dt);
 		return;
 	}
 	ffb_time_ += dt;
 	const double speed = Speed();
-	double f = s.rack_force_ref > 0.0 ? s.rack_force / s.rack_force_ref : 0.0;
+	double f = 0.0;
+	if (s.steer_torque_ref > 0.0) {
+		// Physical steering torque (tyre forces about the kingpins): soft-limited so a big load
+		// still reads as "more" instead of a flat clip.
+		const double x = s.steer_torque / s.steer_torque_ref;
+		f = x / std::sqrt(std::sqrt(1.0 + x * x * x * x));
+	} else {
+		f = s.rack_force / s.rack_force_ref;
+	}
 	f *= Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
 	if (ffb_jolt_t_ > 0.0) {
 		ffb_jolt_t_ -= dt;
