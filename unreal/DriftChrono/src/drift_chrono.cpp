@@ -258,7 +258,16 @@ struct dc_car {
     bool have_last_in = false;
     double rack_avg = 0;
     double torque_avg = 0;
-    double steer_ratio = 12.0;   // steering-wheel angle per road-wheel angle
+    double steer_ratio = 12.0;   // steering-wheel angle per road-wheel angle (nominal, on centre)
+    double steer_input = 0;      // current Chrono steering input (-1..1, + left)
+    std::vector<double> steer_gain;   // d(road wheel)/d(rim) vs input, 41 samples over -1..1
+
+    double SteerGain(double u) const {
+        if (steer_gain.size() < 2) return 1.0 / steer_ratio;
+        const double x = std::clamp((u + 1.0) * 0.5, 0.0, 1.0) * (steer_gain.size() - 1);
+        const size_t i = std::min(static_cast<size_t>(x), steer_gain.size() - 2);
+        return steer_gain[i] + (steer_gain[i + 1] - steer_gain[i]) * (x - i);
+    }
     double limiter_rpm = 1e9, limiter_hz = 0, cut_timer = 0, idle_rpm = 900;   // fuel-cut limiter, run per 1 ms step
     double rear_brake_nm = 0, handbrake_nm = 0;                // rear brakes double as the handbrake
     double accumulator = 0;
@@ -292,7 +301,9 @@ double ColumnTorque(dc_car* c) {
         const TerrainForce f = tire->ReportTireForce(&c->terrain);   // force + moment at the wheel centre, global
         about_kingpins += Vdot(k, Vcross(f.point - lbj, f.force) + f.moment);
     }
-    return -about_kingpins / c->steer_ratio;
+    // d(road-wheel angle)/d(rim angle) at the current steering input: the rack geometry is non-linear
+    // (BDC Miata: 8.4:1 on centre, 6.8:1 near lock), measured at load time.
+    return -about_kingpins * c->SteerGain(c->steer_input);
 }
 
 void ApplyContacts(dc_car* c) {
@@ -392,6 +403,43 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
     }
     sys->SetTimestepperType(ChTimestepper::Type::EULER_IMPLICIT_LINEARIZED);
     c->contact_acc = c->veh->GetChassisBody()->AddAccumulator();
+    // Road-wheel angle vs steering input (exact position assembly at the design pose), for the
+    // column torque's d(road wheel)/d(rim). Rim angle = input x lock x ratio (AC: linear rack).
+    // Road-wheel angle vs steering input, for the column torque's d(road wheel)/d(rim). Measured on a
+    // throwaway copy of the car (exact position assembly): assembling the real one at load time left
+    // its state NaN. Rim angle = input x lock x ratio (AC: the rack moves linearly with the rim).
+    if (!std::getenv("DC_NO_STEER_TABLE")) {
+        WheeledVehicle probe(GetVehicleDataFile(JsonStr(car, "vehicle")), ChContactMethod::NSC);
+        probe.Initialize(ChCoordsys<>(ChVector3d(0, 0, 0), QUNIT));
+        ChSystem* ps = probe.GetSystem();
+        ps->SetSolverType(ChSolver::Type::SPARSE_LU);
+        ChTerrain flat;
+        const int n = 41;
+        std::vector<double> ang(n);
+        for (int i = 0; i < n; ++i) {
+            const double u = -1.0 + 2.0 * i / (n - 1);
+            probe.Synchronize(0, DriverInputs{u, 0, 0, 0}, flat);
+            ps->DoAssembly(AssemblyAnalysis::Level::POSITION);
+            const ChQuaternion<> q = probe.GetChassisBody()->GetFrameRefToAbs().GetRot();
+            double a = 0;
+            for (auto side : {LEFT, RIGHT}) {
+                const ChVector3d axle = q.RotateBack(probe.GetWheel(0, side)->GetSpindle()->GetRot().GetAxisY());
+                a += 0.5 * std::atan2(-axle.x(), axle.y());
+            }
+            ang[i] = a;
+        }
+        const double rim_per_input = c->lock * c->steer_ratio;   // rad of rim per unit input
+        c->steer_gain.assign(n, 1.0 / c->steer_ratio);
+        for (int i = 0; i < n; ++i) {
+            const int i0 = std::max(0, i - 1), i1 = std::min(n - 1, i + 1);
+            const double du = 2.0 * (i1 - i0) / (n - 1);
+            const double g = std::fabs((ang[i1] - ang[i0]) / du) / rim_per_input;
+            if (std::isfinite(g) && g > 0) c->steer_gain[i] = g;
+        }
+        if (std::getenv("DC_VERBOSE"))
+            std::printf("steering: lock %.1f deg, ratio on centre %.2f, at lock %.2f\n", ang[n - 1] * 57.2958,
+                        1.0 / c->steer_gain[n / 2], 1.0 / c->steer_gain[n - 1]);
+    }
     for (auto& l : sys->GetLinks())
         if (auto a = std::dynamic_pointer_cast<ChLinkLockLinActuator>(l)) {
             c->rack = a;
@@ -455,6 +503,7 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
     car->neutral = neutral;
     DriverInputs in;
     in.m_steering = std::clamp(-ctl->steer_angle / car->lock, -1.0, 1.0);
+    car->steer_input = in.m_steering;
     in.m_throttle = std::clamp(ctl->throttle, 0.0, 1.0);
     in.m_braking = std::clamp(ctl->brake, 0.0, 1.0);
     in.m_clutch = neutral ? 1.0 : std::clamp(1.0 - ctl->clutch_engage, 0.0, 1.0);

@@ -104,14 +104,23 @@ static func import_folder(dir: String) -> Dictionary:
 	var tyre_front := "FRONT" if compound <= 0 or not tyr.has("FRONT_%d" % compound) else "FRONT_%d" % compound
 	var tyre_rear := "REAR" if compound <= 0 or not tyr.has("REAR_%d" % compound) else "REAR_%d" % compound
 	var radius := AcIni.f(tyr, tyre_front, "RADIUS", AcIni.f(tyr, "FRONT", "RADIUS", 0.31))
-	# AC: CG height = wheel radius + BASEY on each axle (BASEY < 0 = below the
-	# wheel centre), blended by CG_LOCATION. Only cars without BASEY fall back to
-	# a guess from the inertia box.
+	# AC: BASEY is the wheel centre's height relative to the CG at the hardpoint
+	# ("design") position, so CG = radius - BASEY there (BASEY < 0: wheels below the
+	# CG). AC's springs carry no load at that position, so the car then sits
+	# load / wheel rate further down (BDC Miata: 51 / 41 mm). Checked against the
+	# owner's AC telemetry: lateral load transfer vs lateral g gives 0.338 m
+	# (radius + BASEY gave 0.175 - half). Cars without BASEY fall back to a guess.
 	var cg_height := clampf(h * 0.36, 0.35, 0.7)
 	if sus.has("FRONT") and (sus.FRONT as Dictionary).has("BASEY"):
 		var wf := AcIni.f(sus, "BASIC", "CG_LOCATION", 0.52)
 		var r_rear := AcIni.f(tyr, tyre_rear, "RADIUS", radius)
-		cg_height = clampf(wf * (radius + AcIni.f(sus, "FRONT", "BASEY", 0.0)) + (1.0 - wf) * (r_rear + AcIni.f(sus, "REAR", "BASEY", 0.0)), 0.1, 1.0)
+		var total := AcIni.f(car, "BASIC", "TOTALMASS", 1300.0) + AcIni.f(car, "FUEL", "FUEL", 0.0) * 0.74
+		var sag := func(axle: String, share: float) -> float:
+			var k := AcIni.f(sus, axle, "SPRING_RATE", 0.0)
+			var sprung := total * 9.81 * share * 0.5 - AcIni.f(sus, axle, "HUB_MASS", 40.0) * 9.81
+			return clampf(sprung / k, 0.0, 0.15) if k > 0.0 else 0.0
+		cg_height = clampf(wf * (radius - AcIni.f(sus, "FRONT", "BASEY", 0.0) - sag.call("FRONT", wf))
+			+ (1.0 - wf) * (r_rear - AcIni.f(sus, "REAR", "BASEY", 0.0) - sag.call("REAR", 1.0 - wf)), 0.1, 1.0)
 	var chassis := {
 		"id": car_id, "name": name, "make": brand, "year": year, "body_style": "coupe", "color": "#c8c8c8",
 		# AC: TOTALMASS includes the driver; the tank adds ~0.74 kg per litre of starting fuel.

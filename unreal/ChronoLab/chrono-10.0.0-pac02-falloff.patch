@@ -1,7 +1,16 @@
 diff --git a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
-index 214c655..fc4c9a6 100644
+index 214c655..da3877d 100644
 --- a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
 +++ b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
+@@ -51,7 +51,7 @@ namespace vehicle {
+ 
+ ChPac02Tire::ChPac02Tire(const std::string& name)
+     : ChForceElementTire(name),
+-      m_gamma_limit(3.0 * CH_DEG_TO_RAD),
++      m_gamma_limit(12.0 * CH_DEG_TO_RAD),  // DriftLab: was 3 deg; drift fronts at lock see -8..-10 deg
+       m_mu0(0.8),
+       m_measured_side(LEFT),
+       m_allow_mirroring(true),
 @@ -163,7 +163,7 @@ void ChPac02Tire::CalcFxyMz(double& Fx, double& Fy, double& Mz, double kappa, do
                  (1.0 + m_par.PPX1 * m_states.dpi + m_par.PPX2 * std::pow(m_states.dpi, 2)) * m_par.LKX;
      double Bx = Kx / (Cx * Dx + 0.1);
@@ -11,7 +20,7 @@ index 214c655..fc4c9a6 100644
      // Fx0 = Dx * sin(Cx * atan(Bx * kappa_x - Ex * (Bx * kappa_x - atan(Bx * kappa_x)))) + Svx;
      Fx0 = Dx * std::sin(Cx * std::atan(X1 - Ex * (X1 - std::atan(X1)))) + Svx;
  
-@@ -190,7 +190,7 @@ void ChPac02Tire::CalcFxyMz(double& Fx, double& Fy, double& Mz, double kappa, do
+@@ -190,10 +190,22 @@ void ChPac02Tire::CalcFxyMz(double& Fx, double& Fy, double& Mz, double kappa, do
      double Dy = mu_y * Fz;
      double By = Ky / (Cy * Dy + 0.1);
      double Y1 = By * alpha_y;
@@ -20,16 +29,67 @@ index 214c655..fc4c9a6 100644
      // Fy0 = Dy * std::sin(Cy * std::atan(By * alpha_y - Ey * (By * alpha_y - std::atan(By * alpha_y)))) + Svy;
      Fy0 = Dy * std::sin(Cy * std::atan(Y1 - Ey * (Y1 - std::atan(Y1)))) + Svy;
  
-@@ -1831,6 +1831,8 @@ void ChPac02Tire::Synchronize(double time, const ChTerrain& terrain) {
++    // DriftLab: relaxation length shrinks as the tyre saturates. Stretched-string / carcass model: sigma =
++    // K / C_carcass with K the cornering (slip) stiffness; past linear range the effective K is the secant
++    // F(slip) / slip (Pacejka, Tire and Vehicle Dynamics 3rd ed., 7.2; Higuchi & Pacejka 1997 measured
++    // sigma_alpha falling towards zero near saturation). A sliding tyre's force follows a slip reversal
++    // within the carcass deflection (a few cm), not a fixed ~0.5 m of rolling.
++    {
++        const double sx = std::abs(Kx * kappa_x);
++        const double sy = std::abs(Ky * alpha_y);
++        m_states.sig_ratio_x = sx > 1e-6 * Fz ? ChClamp(std::abs(Fx0 - Svx) / sx, 0.05, 1.0) : 1.0;
++        m_states.sig_ratio_y = sy > 1e-6 * Fz ? ChClamp(std::abs(Fy0 - Svy) / sy, 0.05, 1.0) : 1.0;
++    }
++
+     // not Pacejka: grip saturation longitudinal ------------------------
+     m_states.grip_sat_x = std::abs((Fx0 - Svx) / Fz) / std::abs(Dx / Fz);
+     ChClampValue(m_states.grip_sat_x, 0.0, 1.0);
+@@ -257,10 +269,14 @@ void ChPac02Tire::CalcFxyMz(double& Fx, double& Fy, double& Mz, double kappa, do
+                 // combining without rsp. Pacejka coefficients, ADAMs
+                 double kappa_c = kappa + Shx + Svx / Kx;
+                 double alpha_c = alpha + Shy + Svy / Ky;
+-                double alpha_s = std::sin(alpha_c);
+-                double beta = std::acos(std::abs(kappa_c) / hypot(kappa_c, alpha_s));
+-                double mu_x_act = std::abs((Fx0 - Svx) / Fz);
+-                double mu_y_act = std::abs((Fy0 - Svy) / Fz);
++                // DriftLab: tan, not sin - the sliding velocity is (Vsx, Vsy) = Vx (-kappa, tan alpha), so the
++                // combined force lines up with it (sin rotated it towards Fx: 30% off at 60 deg drift angle).
++                double alpha_s = std::tan(ChClamp(alpha_c, -1.5, 1.5));
++                double beta = std::atan2(std::abs(alpha_s), std::abs(kappa_c));
++                // DriftLab: whole forces incl. the vertical shifts (the camber thrust Svy must shrink with wheel
++                // spin like the rest of Fy, not survive it), guarded (kappa or alpha exactly 0 gave 0/0 = NaN)
++                double mu_x_act = std::max(std::abs(Fx0 / Fz), 1e-9);
++                double mu_y_act = std::max(std::abs(Fy0 / Fz), 1e-9);
+                 double mu_x_max = Dx / Fz;
+                 double mu_y_max = Dy / Fz;
+                 double mu_x_c = 1.0 / hypot(1.0 / mu_x_act, std::tan(beta) / mu_y_max);
+@@ -1809,6 +1825,14 @@ void ChPac02Tire::Synchronize(double time, const ChTerrain& terrain) {
+         ChClampValue(m_states.kappa, -1.0, 1.0);
+         // Ensure that alpha stays between -pi()/2 & pi()/2 (a little less to prevent tan from going to infinity)
+         ChClampValue(m_states.alpha, -CH_PI_2 + 0.01, CH_PI_2 - 0.01);
++        // DriftLab: inclination angle (was never computed, so all camber terms were dead).
++        // ISO/TYDEX inclination gamma_iso = asin(spin axis . road normal): positive = wheel top leaning to the
++        // vehicle's right, for both sides (the spindle Y axis points left on both sides), so a left wheel with
++        // negative camber has gamma_iso > 0 and a right one gamma_iso < 0. Chrono evaluates the MF with the
++        // slip angle alpha = -alpha_TYDEX and reports Fy = -Fy_MF (see Advance), which flips every term that is
++        // odd in gamma; using gamma = -gamma_iso internally undoes that, so a standard TYDEX/ADAMS .tir
++        // (e.g. PVY3 < 0, PHY3 > 0) gives camber thrust towards the side the wheel leans to.
++        m_states.gamma = -std::asin(ChClamp(Vdot(disc_normal, m_data.frame.rot.GetAxisZ()), -1.0, 1.0));
+         // Clamp |gamma| to specified value: Limit due to tire testing, avoids erratic extrapolation. m_gamma_limit is
+         // in rad too.
+         ChClampValue(m_states.gamma, -m_gamma_limit, m_gamma_limit);
+@@ -1831,6 +1855,10 @@ void ChPac02Tire::Synchronize(double time, const ChTerrain& terrain) {
          m_states.dpi = 1;
          m_states.brx = 0;
          m_states.bry = 0;
 +        m_states.kappa_t = 0;
 +        m_states.tana_t = 0;
++        m_states.sig_ratio_x = 1;
++        m_states.sig_ratio_y = 1;
          m_states.disc_normal = ChVector3d(0, 0, 0);
      }
  }
-@@ -1860,6 +1862,20 @@ void ChPac02Tire::Advance(double step) {
+@@ -1860,6 +1888,21 @@ void ChPac02Tire::Advance(double step) {
      double gamma = m_states.gamma;
      double frblend = ChFunctionSineStep::Eval(std::abs(m_data.vel.x()), m_frblend_begin, 0.0, m_frblend_end, 1.0);
  
@@ -39,8 +99,9 @@ index 214c655..fc4c9a6 100644
 +    // steady-state slip made free-rolling wheels oscillate at low speed with a 1 ms step).
 +    {
 +        const double vx = std::abs(m_data.vel.x());
-+        const double sk = ChClamp(CalcSigmaK(Fz), 0.02, 1.0);
-+        const double sa = ChClamp(CalcSigmaA(Fz), 0.02, 1.0);
++        // DriftLab: scaled by the secant stiffness ratio of the previous step (see CalcFxyMz)
++        const double sk = ChClamp(CalcSigmaK(Fz) * m_states.sig_ratio_x, 0.02, 1.0);
++        const double sa = ChClamp(CalcSigmaA(Fz) * m_states.sig_ratio_y, 0.02, 1.0);
 +        m_states.kappa_t = (sk * m_states.kappa_t - step * m_states.vsx) / (sk + step * vx);
 +        m_states.tana_t = (sa * m_states.tana_t + step * m_states.vsy) / (sa + step * vx);
 +        kappa = ChClamp(m_states.kappa_t, -1.0, 1.0);
@@ -51,15 +112,26 @@ index 214c655..fc4c9a6 100644
          case 0:
              // vertical spring & damper mode
 diff --git a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
-index 2bb4c5b..00c25f2 100644
+index 2bb4c5b..0900e4f 100644
 --- a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
 +++ b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.h
-@@ -403,6 +403,8 @@ class CH_VEHICLE_API ChPac02Tire : public ChForceElementTire {
+@@ -60,7 +60,7 @@ class CH_VEHICLE_API ChPac02Tire : public ChForceElementTire {
+     /// Get the tire radius.
+     virtual double GetRadius() const override { return m_states.R_eff; }
+ 
+-    /// Set the limit for camber angle (in degrees).  Default: 3 degrees.
++    /// Set the limit for camber angle (in degrees).  Default: 12 degrees (DriftLab; upstream 3).
+     void SetGammaLimit(double gamma_limit) { m_gamma_limit = CH_DEG_TO_RAD * gamma_limit; }
+ 
+     /// Get the width of the tire.
+@@ -403,6 +403,10 @@ class CH_VEHICLE_API ChPac02Tire : public ChForceElementTire {
          double Pi0_prime;        // scaled inflation pressure
          double dpi;              // normalized inflation pressure
          double brx{0};           // bristle deformation x
 +        double kappa_t{0};       // DriftLab: transient (relaxed) longitudinal slip
 +        double tana_t{0};        // DriftLab: transient (relaxed) tan(slip angle)
++        double sig_ratio_x{1};   // DriftLab: relaxation length scale = secant / initial slip stiffness (x)
++        double sig_ratio_y{1};   // DriftLab: relaxation length scale = secant / initial slip stiffness (y)
          double bry{0};           // bristle deformation y
          ChVector3d disc_normal;  //(temporary for debug)
      };

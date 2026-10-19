@@ -155,6 +155,29 @@ vite files) is an unrelated web app.
   sound: `DriftAudio.h/.cpp` (UDriftEngineSynth, procedural engine + tyre synth, compiled but NOT wired/tested);
   camber in Pac02 (gamma never set); turbo boost into Chrono.
 
+### Physics accuracy pass (2026-10-19) - goal: more accurate than ACC / Assetto Corsa Rally
+- Owner's overarching goal: a racing sim more accurate than ACC / AC Rally (drift first). AC data is a
+  cross-check, never the ceiling; prefer measured/published physics (e.g. tyre relaxation from literature, not AC's).
+- CG height: AC BASEY is wheel centre relative to CG, so CG = R - BASEY - rest sag (BDC: 0.329 m; AC telemetry
+  lateral load transfer says 0.338). Was R + BASEY = 0.175 (half). Importer + test fixed.
+- Suspension (agent): ac_to_chrono wishbone()/build_car: ARB was ~55x too weak (Length/Width swapped, droplink
+  misplaced), wheel rates 44/91% too stiff (motion ratio), dampers now AC bump/rebound slow/fast curves, built in
+  AC's rest pose (springs unloaded at hardpoints -> rests 51/41 mm into bump), AC rack travel from
+  LINEAR_STEER_ROD_RATIO (8.4:1 on centre, lock ~67 deg). Tool: unreal/ChronoLab/kinematics.cpp. Front: caster 4.5,
+  KPI 12.4, mech trail 43 mm, scrub +80 mm, camber -5.9 at rest.
+- Tyres (agent): Pac02 camber now computed (gamma was always 0), combined slip via tan(alpha) ellipse, relaxation
+  shrinks with saturation (secant/initial stiffness); tir(): literature relaxation (~0.45 m lateral at 3 kN),
+  one C for Fx/Fy, camber from AC DCAMBER/CAMBER_GAIN limited to radial-tyre ranges. Tool: ChronoLab/tyre_test.cpp.
+- FFB: DriftChrono steer_torque = front tyre force+moment about each kingpin axis x d(road)/d(rim) (steering curve
+  measured on a throwaway vehicle copy at load: assembling the live car left NaNs). [DriftChrono] FfbSource=Kingpin,
+  FfbSteerTorque=50 N m full scale (soft limit). dc_maneuvers test 8 = simulated G920 rim in the loop.
+- Manoeuvres now (combined car): understeer 0.53 deg/g (AC 0.55), max lat 1.09 g, braking 35.7 m 100-0; fails:
+  yaw response time 0.35 s (<=0.30), phase lag 50 deg at 1 Hz (<=40) - suspects: AC inertia box 4.95 m long vs real
+  Miata 3.95 m (yaw inertia too high), relaxation; drift-hold test driver commands road-wheel angles linearly
+  (DLL maps steer_angle/lock to rack input) - the rack is non-linear now.
+- Next: synchro shift timing per gearbox, yaw inertia check, FFB loop at >=333 Hz (helper extrapolation), G920
+  min-force/LUT, sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
+
 ## Drift circuit generator (2026-10-18)
 `drift-sim/scripts/track/drift_circuit_generator.gd` (DriftCircuitGenerator.generate({seed, length, width, scale,
 flow, elevation})) -> TrackSpec dict (+ "corners" sheet: kind, radius, angle, drift speed sqrt(0.75 g R)).
