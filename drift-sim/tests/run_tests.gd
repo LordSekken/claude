@@ -21,6 +21,7 @@ func _init() -> void:
 	test_tire()
 	test_parts_and_builds()
 	test_tracks()
+	test_drift_generator()
 	test_tracer()
 	test_scorer()
 	test_ac_import()
@@ -94,6 +95,38 @@ func test_tracks() -> void:
 	check((v8.errors as Array).size() > 0, "self-crossing track rejected")
 	var s := TrackSpec.sample({"points": [[0, 0], [100, 0], [100, 100], [0, 100]], "closed": true}, 2.0)
 	check(absf(float(s.length) - 360.0) < 80.0, "square-ish loop length plausible (%s)" % s.length)
+
+
+func test_drift_generator() -> void:
+	var lengths := []
+	for seed in range(1, 11):
+		var r := DriftCircuitGenerator.generate({"seed": seed, "length": 1400.0, "width": 13.0})
+		check(r.ok, "drift circuit seed %d generates (%s)" % [seed, r.get("message", "")])
+		if not r.ok:
+			continue
+		var spec: Dictionary = r.spec
+		var v := TrackSpec.validate(spec)
+		check((v.errors as Array).is_empty(), "drift circuit seed %d valid: %s" % [seed, v.errors])
+		check(float(v.stats.min_radius_m) >= 13.0 * 0.5 + 2.0, "seed %d: no corner tighter than the road can turn (%s m)" % [seed, v.stats.min_radius_m])
+		check(float(v.stats.length_m) > 800.0 and float(v.stats.length_m) < 2400.0, "seed %d: length near target (%s m)" % [seed, v.stats.length_m])
+		check((r.corners as Array).size() >= 6, "seed %d: enough corners (%d)" % [seed, (r.corners as Array).size()])
+		check(not (spec.zones as Array).is_empty() and not (spec.clips as Array).is_empty(), "seed %d: zones and clipping points" % seed)
+		var ok_scale := true
+		for c: Dictionary in r.corners:
+			ok_scale = ok_scale and float(c.radius_m) >= 9.0 and float(c.radius_m) <= 230.0 and float(c.drift_speed_kmh) >= 30.0
+		check(ok_scale, "seed %d: corner radii / drift speeds in a drift car's range" % seed)
+		check(float(v.stats.max_grade_pct) < 12.0, "seed %d: gentle grades (%s %%)" % [seed, v.stats.max_grade_pct])
+		lengths.append(float(v.stats.length_m))
+	var a := DriftCircuitGenerator.generate({"seed": 4})
+	var b := DriftCircuitGenerator.generate({"seed": 4})
+	check(a.ok and b.ok and JSON.stringify(a.spec.points) == JSON.stringify(b.spec.points), "same seed gives the same circuit")
+	var big := DriftCircuitGenerator.generate({"seed": 4, "scale": 1.6, "length": 2200.0})
+	check(big.ok and float((big.corners as Array).map(func(c: Dictionary) -> float: return float(c.radius_m)).min()) >= 13.0 * 0.5 + 2.0,
+		"bigger scale generates a valid circuit")
+	if a.ok:
+		var built := TrackBuilder.build(a.spec)
+		check(built.root.get_child_count() > 2, "generated circuit builds into a track")
+		built.root.free()
 
 
 func test_tracer() -> void:

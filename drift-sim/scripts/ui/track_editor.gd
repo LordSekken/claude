@@ -22,6 +22,10 @@ var _status: RichTextLabel
 var _point_box: VBoxContainer
 var _zone_start := -1
 var _samples: Dictionary = {}
+var _gen_seed := 1
+var _gen_length := 1400.0
+var _gen_flow := 0.5
+var _gen_scale := 1.0
 
 
 func _ready() -> void:
@@ -81,6 +85,33 @@ func _build_panel() -> void:
 		_changed(true), 36))
 	top.add_child(UiUtil.button("Open...", _open, 36))
 	_panel.add_child(top)
+
+	# Drift circuit generator (DriftCircuitGenerator): a new layout each seed.
+	_panel.add_child(UiUtil.label("Generate a drift circuit", 18, Color(1, 0.8, 0.25)))
+	var gen_row := HBoxContainer.new()
+	var seed_box := SpinBox.new()
+	seed_box.min_value = 1
+	seed_box.max_value = 999999
+	seed_box.value = _gen_seed
+	seed_box.value_changed.connect(func(v: float) -> void: _gen_seed = int(v))
+	gen_row.add_child(UiUtil.label("Seed", 14, Color(0.8, 0.8, 0.85)))
+	gen_row.add_child(seed_box)
+	var len_box := SpinBox.new()
+	len_box.min_value = 600
+	len_box.max_value = 4000
+	len_box.step = 100
+	len_box.value = _gen_length
+	len_box.value_changed.connect(func(v: float) -> void: _gen_length = v)
+	gen_row.add_child(UiUtil.label("Length m", 14, Color(0.8, 0.8, 0.85)))
+	gen_row.add_child(len_box)
+	_panel.add_child(gen_row)
+	_panel.add_child(UiUtil.row("Flowing <-> technical", UiUtil.slider(0, 1, 0.05, 1.0 - _gen_flow, func(v: float) -> void: _gen_flow = 1.0 - v), 140))
+	_panel.add_child(UiUtil.row("Size (corner scale)", UiUtil.slider(0.6, 2.0, 0.05, _gen_scale, func(v: float) -> void: _gen_scale = v), 140))
+	var gen_btns := HBoxContainer.new()
+	gen_btns.add_child(UiUtil.button("Generate", func() -> void: _generate(false), 36))
+	gen_btns.add_child(UiUtil.button("New random", func() -> void: _generate(true), 36))
+	_panel.add_child(gen_btns)
+	_panel.add_child(HSeparator.new())
 	var name_edit := LineEdit.new()
 	name_edit.text = str(spec.get("name", ""))
 	name_edit.text_changed.connect(func(tx: String) -> void: spec["name"] = tx)
@@ -216,6 +247,27 @@ func _refresh_point_box() -> void:
 		spec["widths"] = ws
 		_changed())
 	_point_box.add_child(UiUtil.row("Width here", wsb, 140))
+
+
+func _generate(new_seed: bool) -> void:
+	if new_seed:
+		_gen_seed = randi_range(1, 999999)
+	var r := DriftCircuitGenerator.generate({"seed": _gen_seed, "length": _gen_length, "width": float(spec.get("width", 13.0)),
+		"flow": _gen_flow, "scale": _gen_scale})
+	if not r.ok:
+		_set_status("[color=#ff6666]✖ %s - try another seed[/color]" % r.message)
+		return
+	spec = TrackSpec.normalized(r.spec)
+	bg_tex = null
+	selected = -1
+	_build_panel()
+	_changed(true)
+	var kinds := {}
+	for c: Dictionary in r.corners:
+		kinds[c.kind] = int(kinds.get(c.kind, 0)) + 1
+	var speeds: Array = (r.corners as Array).map(func(c: Dictionary) -> float: return float(c.drift_speed_kmh))
+	_status.text = "Seed %d: %s\nCorners: %s · drift speeds %d-%d km/h\n" % [_gen_seed, spec.description, str(kinds),
+		int(speeds.min()), int(speeds.max())] + _status.text
 
 
 func _changed(refit := false) -> void:

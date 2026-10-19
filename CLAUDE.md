@@ -135,6 +135,17 @@ vite files) is an unrelated web app.
 - Headless UE tests: `drift.AutoThrottle/AutoSteer/PhysicsLog/NoWheel/UseDriftCore` cvars (set NoWheel before
   Play so tests never drive the owner's G920). Headless editor runs ~3 fps (RenderOffscreen).
 
+## Drift circuit generator (2026-10-18)
+`drift-sim/scripts/track/drift_circuit_generator.gd` (DriftCircuitGenerator.generate({seed, length, width, scale,
+flow, elevation})) -> TrackSpec dict (+ "corners" sheet: kind, radius, angle, drift speed sqrt(0.75 g R)).
+Grammar: entry straight, chains of linked corners (transitions alternate, radii within 0.65-1.6x, double apexes,
+no hairpin after a sweeper/hairpin), heading steered to curl round, closed by a Dubins turn-straight-turn
+(closing straight capped). Corner sizes: sweeper 45-75 m, medium 25-40, tight 15-22, hairpin 11-15 (>= width/2+3);
+"scale" multiplies radii/straights. Track editor: "Generate drift circuit" (seed, length, flowing<->technical, size).
+Tools: `tools/generate_drift_circuit.gd -- <out.json> [seed] [len] [width] [scale] [flow]`,
+`tools/render_track_map.gd -- <track.json> <out.png>` (top-down preview). Unreal: export_unreal_track.gd then
+build_track_level.py (sets the default map). drift_circuit_2 built (seed 2, 1.5 km, 13 corners).
+
 ## Forza / track inference notes
 FH packets 324 bytes, dash block at 244. SurfaceRumble per wheel at 148-160 (0 tarmac, 0.12 rough,
 0.24 kerb). Forza world is mirrored vs Godot (mirror x). Track inference (`forza_session.gd`) bins
