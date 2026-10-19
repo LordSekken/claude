@@ -514,7 +514,7 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 		f += ffb_jolt_;
 	}
 	ffb_force_ = Clamp(f, -1.0, 1.0);
-	ffb_damper_ = Lerp(0.45, 0.08, Clamp(speed / 8.0, 0.0, 1.0));
+	ffb_damper_ = Lerp(0.45, 0.0, Clamp(speed / 8.0, 0.0, 1.0));   // none at speed: a damper slowed the rim winding into countersteer (owner reached ~half of AC's countersteer)
 	ffb_spring_ = Lerp(0.12, 0.0, Clamp(speed / 5.0, 0.0, 1.0));
 }
 
@@ -647,7 +647,7 @@ void Vehicle::ComputeFfb(double dt) {
 		f += ffb_jolt_;
 	}
 	ffb_force_ = Clamp(f + rumble, -1.0, 1.0);
-	ffb_damper_ = Lerp(0.45, 0.08, Clamp(speed / 8.0, 0.0, 1.0));
+	ffb_damper_ = Lerp(0.45, 0.0, Clamp(speed / 8.0, 0.0, 1.0));   // none at speed: a damper slowed the rim winding into countersteer (owner reached ~half of AC's countersteer)
 	ffb_spring_ = Lerp(0.12, 0.0, Clamp(speed / 5.0, 0.0, 1.0));   // AC: almost none parked
 }
 
