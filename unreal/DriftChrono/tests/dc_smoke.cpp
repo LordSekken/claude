@@ -98,6 +98,43 @@ int main(int argc, char** argv) {
     Check(s.rack_force < -500, "road pushes the rack back towards centre (self-aligning)");
     Check(s.wheel[0].fy > 500, "front tyre lateral force points right (into the turn)");
 
+    // Smoothness: cruising straight at ~30 km/h, the rack force and the front wheel positions must
+    // be steady sample to sample (the owner's wheel buzzed: the iterative solver's joint forces were noisy).
+    {
+        dc_reset(car, origin, rot);
+        c = {0, 0.5, 0, 0, 1, 1};
+        for (int i = 0; i < 800; ++i) {
+            dc_step(car, 0.0167, &c, nullptr, 0);
+            dc_get_state(car, &s);
+            c.throttle = Speed(s) > 30 / 3.6 ? 0.15 : 0.5;
+        }
+        double prev_rack = 0, prev_y = 0, jr = 0, jy = 0, sum_rack = 0;
+        for (int i = 0; i < 200; ++i) {
+            // A wheel sends a slightly different angle every frame (60 fps), like the owner's G920.
+            c.steer_angle = 0.01 * std::sin(i * 0.15);
+            dc_step(car, 0.0167, &c, nullptr, 0);
+            dc_get_state(car, &s);
+            if (i) jr += std::fabs(s.rack_force - prev_rack), jy += std::fabs(s.wheel[0].center_local[1] - prev_y);
+            prev_rack = s.rack_force, prev_y = s.wheel[0].center_local[1];
+            sum_rack += s.rack_force;
+        }
+        std::printf("straight %.0f km/h: rack mean %+.0f N, mean step change %.0f N; wheel height jitter %.2f mm\n",
+                    Speed(s) * 3.6, sum_rack / 200, jr / 199, jy / 199 * 1000);
+        Check(jr / 199 < 100 && jy / 199 < 0.5, "rack force and wheels are steady when cruising");
+    }
+
+    // Clutch open: full throttle in gear with the clutch down must rev the engine, not move the car.
+    {
+        dc_reset(car, origin, rot);
+        c = {0, 0, 1, 0, 1, 1};
+        for (int i = 0; i < 100; ++i) dc_step(car, 0.01, &c, nullptr, 0);
+        c = {0, 1, 0, 0, 0, 1};
+        for (int i = 0; i < 150; ++i) dc_step(car, 0.01, &c, nullptr, 0);
+        dc_get_state(car, &s);
+        std::printf("clutch down, full throttle 1.5 s: %.1f km/h, %.0f rpm\n", Speed(s) * 3.6, s.rpm);
+        Check(Speed(s) < 2 && s.rpm > 3000, "clutch disconnects the engine");
+    }
+
     // Low-speed launch, wheel straight: the rack shouldn't be yanked (Unreal showed full FFB at ~10 km/h).
     dc_reset(car, origin, rot);
     c = {0, 0.35, 0, 0, 1, 1};

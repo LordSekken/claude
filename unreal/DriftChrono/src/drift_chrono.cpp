@@ -20,6 +20,8 @@
 #include "chrono/physics/ChShaftBodyConstraint.h"
 #include "chrono/physics/ChSystemNSC.h"
 #include "chrono/solver/ChIterativeSolverVI.h"
+#include "chrono/solver/ChDirectSolverLS.h"
+#include "chrono/solver/ChSolverADMM.h"
 #include "chrono_vehicle/ChTerrain.h"
 #include "chrono_vehicle/ChVehicleDataPath.h"
 #include "chrono_vehicle/utils/ChUtilsJSON.h"
@@ -251,6 +253,9 @@ struct dc_car {
     double mass = 1200;
     int forward_gears = 5;
     bool neutral = false;
+    DriverInputs last_in{0, 0, 0, 0};
+    bool have_last_in = false;
+    double rack_avg = 0;
     double accumulator = 0;
     double spin[4] = {0, 0, 0, 0};
     unsigned int contact_acc = 0;
@@ -340,11 +345,21 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
     ChSystem* sys = c->veh->GetSystem();
     sys->SetCollisionSystemType(ChCollisionSystem::Type::BULLET);
     // Clutches/brakes are friction-limited constraints: they need a VI solver.
-    sys->SetSolverType(ChSolver::Type::BARZILAIBORWEIN);
-    auto solver = std::static_pointer_cast<ChIterativeSolverVI>(sys->GetSolver());
-    solver->SetMaxIterations(100);
-    solver->SetOmega(0.8);
-    solver->SetSharpnessLambda(1.0);
+    const char* which = std::getenv("DC_SOLVER");
+    const std::string solver_name = which ? which : "bb";
+    if (solver_name == "admm") {
+        auto admm = chrono_types::make_shared<ChSolverADMM>(chrono_types::make_shared<ChSolverSparseLU>());
+        admm->SetMaxIterations(std::getenv("DC_ITERS") ? std::atoi(std::getenv("DC_ITERS")) : 30);
+        sys->SetSolver(admm);
+    } else if (solver_name == "lu") {
+        sys->SetSolverType(ChSolver::Type::SPARSE_LU);
+    } else {
+        sys->SetSolverType(ChSolver::Type::BARZILAIBORWEIN);
+        auto solver = std::static_pointer_cast<ChIterativeSolverVI>(sys->GetSolver());
+        solver->SetMaxIterations(std::getenv("DC_ITERS") ? std::atoi(std::getenv("DC_ITERS")) : 100);
+        solver->SetOmega(0.8);
+        solver->SetSharpnessLambda(1.0);
+    }
     sys->SetTimestepperType(ChTimestepper::Type::EULER_IMPLICIT_LINEARIZED);
     c->contact_acc = c->veh->GetChassisBody()->AddAccumulator();
     for (auto& l : sys->GetLinks())
@@ -382,6 +397,7 @@ DC_API void dc_reset(dc_car* car, const double origin[3], const double rot[9]) {
     sys->Update(UpdateFlags::UPDATE_ALL_NO_VISUAL);
     car->accumulator = 0;
     car->contacts.clear();
+    car->have_last_in = false;
 }
 
 DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_contact* contacts, int count) {
@@ -418,9 +434,20 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
     // the game briefly runs slow instead of catching up, which would make the next frame slower
     // still - at a 0.25 s cap one hitch locked the game at ~8 fps.
     car->accumulator = std::min(car->accumulator + dt, 0.03);
+    // The host's inputs change once per frame; ramp them across this frame's physics steps.
+    // A steering step held by the position-driven rack is an impulse every frame (~470 N of
+    // rack-force buzz in the owner's wheel at a steady 56 km/h).
+    const DriverInputs target = in;
+    const DriverInputs from = car->have_last_in ? car->last_in : target;
+    const int frame_steps = std::max(1, static_cast<int>(car->accumulator / kStep));
     int steps = 0;
+    double rack_sum = 0;
     while (car->accumulator >= kStep) {
         const double t = sys->GetChTime();
+        const double k = std::min(1.0, (steps + 1.0) / frame_steps);
+        in.m_steering = from.m_steering + (target.m_steering - from.m_steering) * k;
+        in.m_throttle = from.m_throttle + (target.m_throttle - from.m_throttle) * k;
+        in.m_braking = from.m_braking + (target.m_braking - from.m_braking) * k;
         car->veh->Synchronize(t, in, car->terrain);
         if (rear_brake > in.m_braking) {
             auto axle = car->veh->GetAxle(1);
@@ -429,6 +456,7 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
         }
         ApplyContacts(car);
         car->veh->Advance(kStep);
+        if (car->rack) rack_sum += -car->rack->GetReaction2().force.x();
         for (int i = 0; i < 4; ++i) {
             auto sp = WheelAt(car, i)->GetSpindle();
             const ChVector3d left = car->veh->GetChassisBody()->GetRot().GetAxisY();
@@ -437,6 +465,9 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
         car->accumulator -= kStep;
         ++steps;
     }
+    if (steps) car->rack_avg = rack_sum / steps;   // the frame's mean: what a wheel can render
+    car->last_in = target;
+    car->have_last_in = true;
     car->last_us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
     return steps;
 }
@@ -484,7 +515,7 @@ DC_API void dc_get_state(const dc_car* car, dc_state* s) {
     s->gear = car->neutral ? 0 : car->veh->GetTransmission()->GetCurrentGear();
     // The actuator locks X only; its reaction is what holds the rack, so the road load is minus that
     // (checked by dc_smoke: steering right, the tyres push the rack back to the left).
-    s->rack_force = car->rack ? -car->rack->GetReaction2().force.x() : 0.0;
+    s->rack_force = car->rack_avg;
     s->steer_lock = car->lock;
     s->sim_time = car->veh->GetSystem()->GetChTime();
 }
