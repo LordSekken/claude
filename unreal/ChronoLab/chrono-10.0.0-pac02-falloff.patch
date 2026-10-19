@@ -1,5 +1,5 @@
 diff --git a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
-index 214c655..da3877d 100644
+index 214c655..24ff18f 100644
 --- a/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
 +++ b/src/chrono_vehicle/wheeled_vehicle/tire/ChPac02Tire.cpp
 @@ -51,7 +51,7 @@ namespace vehicle {
@@ -89,7 +89,7 @@ index 214c655..da3877d 100644
          m_states.disc_normal = ChVector3d(0, 0, 0);
      }
  }
-@@ -1860,6 +1888,21 @@ void ChPac02Tire::Advance(double step) {
+@@ -1860,6 +1888,28 @@ void ChPac02Tire::Advance(double step) {
      double gamma = m_states.gamma;
      double frblend = ChFunctionSineStep::Eval(std::abs(m_data.vel.x()), m_frblend_begin, 0.0, m_frblend_end, 1.0);
  
@@ -102,10 +102,17 @@ index 214c655..da3877d 100644
 +        // DriftLab: scaled by the secant stiffness ratio of the previous step (see CalcFxyMz)
 +        const double sk = ChClamp(CalcSigmaK(Fz) * m_states.sig_ratio_x, 0.02, 1.0);
 +        const double sa = ChClamp(CalcSigmaA(Fz) * m_states.sig_ratio_y, 0.02, 1.0);
++        const double k_prev = m_states.kappa_t, t_prev = m_states.tana_t;
 +        m_states.kappa_t = (sk * m_states.kappa_t - step * m_states.vsx) / (sk + step * vx);
 +        m_states.tana_t = (sa * m_states.tana_t + step * m_states.vsy) / (sa + step * vx);
-+        kappa = ChClamp(m_states.kappa_t, -1.0, 1.0);
-+        alpha = ChClamp(std::atan(m_states.tana_t), -CH_PI_2 + 0.01, CH_PI_2 - 0.01);
++        // DriftLab: carcass damping (MF-Tyre 6.1 [STRUCTURAL] DAMP_RESIDUAL = 0.002: damping = 0.002 s x
++        // carcass stiffness), i.e. force follows slip' + 0.002 s * d(slip')/dt. Without it the wheel spin
++        // inertia on the tyre's carcass spring rang undamped at low speed (driveline surge -> free front
++        // wheels +-450 N -> steering shake through the scrub radius).
++        static const double tau = std::getenv("DC_CARCASS_TAU") ? std::atof(std::getenv("DC_CARCASS_TAU")) : 0.002;
++        kappa = ChClamp(m_states.kappa_t + tau * (m_states.kappa_t - k_prev) / step, -1.0, 1.0);
++        alpha = ChClamp(std::atan(m_states.tana_t + tau * (m_states.tana_t - t_prev) / step), -CH_PI_2 + 0.01,
++                        CH_PI_2 - 0.01);
 +    }
 +
      switch (m_use_mode) {

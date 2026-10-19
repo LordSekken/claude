@@ -778,6 +778,16 @@ void TestRimLoop(Sim& m, double hand_damping, const char* label, double t_ref) {
         }
         m.c.steer_angle = th / ratio;
         m.Step();
+        if (std::getenv("DC_RIM_TRACE") && m.t - t1 > 1.0)
+            std::printf("      t %.3f v %.2f yaw %+.2f th %+.0f tq %+.1f om %.1f %.1f %.1f %.1f fz %.0f %.0f %.0f %.0f\n", m.t - t1,
+                        m.speed, m.s.ang_vel[1], th * kDeg, m.s.steer_torque, m.s.wheel[0].omega, m.s.wheel[1].omega,
+                        m.s.wheel[2].omega, m.s.wheel[3].omega, m.s.wheel[0].fz, m.s.wheel[1].fz, m.s.wheel[2].fz,
+                        m.s.wheel[3].fz);
+        if (!std::isfinite(m.speed) || !std::isfinite(m.s.steer_torque)) {
+            std::printf("  NaN in the physics state at t %.3f\n", m.t - t1);
+            spun = true;
+            break;
+        }
         if (std::fabs(d) > 100 || m.speed < 2) { spun = true; break; }
         if (m.t - t1 > 2.0) {
             dv.push_back(d), sv.push_back(-m.steer * kDeg);
@@ -802,6 +812,7 @@ void TestRimLoop(Sim& m, double hand_damping, const char* label, double t_ref) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     if (argc < 3) {
         std::printf("usage: dc_maneuvers <car root> <car id> [tests 1..7]\n");
         return 2;

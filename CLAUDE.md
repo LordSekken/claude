@@ -178,6 +178,13 @@ vite files) is an unrelated web app.
 - Done 2026-10-19: yaw inertia = m*a*b*0.95 (dynamic index) minus corners (AC box was ~1.85x): response 0.18 s,
   lag 30 deg, all dc_maneuvers pass. H-shifter synchro model (DriftCore SelectGear: synchro_nm/gearbox_inertia,
   clutch-out only within shift_window_rpm = AC VALID_SHIFT_RPM_WINDOW, else GRIND on HUD; dog_box option).
+- Owner drove it (2026-10-19): "a lot better"; centre shake at 13-18 km/h. Causes found with tests/dc_osc.cpp:
+  Chrono's ShaftsDriveline2WD diff-lock clutch starts at modulation 0 = OPEN diff (rears split 20 rad/s); the DLL
+  now engages it and sets the limit per step (AC preload + power/coast x input torque; welded = 1e5; car.json
+  diff_*). Plus Pac02 carcass damping (MF 6.1 DAMP_RESIDUAL 0.002 s; env DC_CARCASS_TAU): free front wheels rang
+  on the tyre spring under driveline surge -> scrub radius -> rim shake (11 -> 0.02 N m p-p). HostTerrain CellAt
+  returned a reference into a cache that clears at 2M cells -> crash after a few km; now by value.
+  Default map back to brooklyn_park. Open: rim-in-the-loop hands-off drift (test 8) tank-slaps at full throttle.
 - Next: FFB loop at >=333 Hz (helper extrapolation), G920
   min-force/LUT, sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 

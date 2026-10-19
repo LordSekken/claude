@@ -18,6 +18,7 @@
 
 #include "chrono/physics/ChLinkLock.h"
 #include "chrono/physics/ChShaftBodyConstraint.h"
+#include "chrono/physics/ChShaftsClutch.h"
 #include "chrono/physics/ChSystemNSC.h"
 #include "chrono/solver/ChIterativeSolverVI.h"
 #include "chrono/solver/ChDirectSolverLS.h"
@@ -184,7 +185,9 @@ class HostTerrain : public ChTerrain {
   private:
     mutable std::unordered_map<uint64_t, Cell> cache_;
 
-    const Cell& CellAt(int ix, int iy, int band) const {
+    // By value: a full cache is cleared, which would leave a caller's earlier reference dangling
+    // (crashed after a few km of driving in one session).
+    Cell CellAt(int ix, int iy, int band) const {
         const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(ix)) << 36) ^
                              (static_cast<uint64_t>(static_cast<uint32_t>(iy) & 0xFFFFFFFu) << 8) ^
                              static_cast<uint64_t>(static_cast<uint8_t>(band));
@@ -212,8 +215,9 @@ class HostTerrain : public ChTerrain {
         const double fx = x / kGrid, fy = y / kGrid;
         const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
         const double tx = fx - ix, ty = fy - iy;
-        const Cell* c[4] = {&CellAt(ix, iy, band), &CellAt(ix + 1, iy, band), &CellAt(ix, iy + 1, band),
-                            &CellAt(ix + 1, iy + 1, band)};
+        const Cell cells[4] = {CellAt(ix, iy, band), CellAt(ix + 1, iy, band), CellAt(ix, iy + 1, band),
+                               CellAt(ix + 1, iy + 1, band)};
+        const Cell* c[4] = {&cells[0], &cells[1], &cells[2], &cells[3]};
         const double w[4] = {(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty};
         Cell out;
         double wsum = 0, best_w = -1;
@@ -270,6 +274,12 @@ struct dc_car {
     }
     double limiter_rpm = 1e9, limiter_hz = 0, cut_timer = 0, idle_rpm = 900;   // fuel-cut limiter, run per 1 ms step
     double rear_brake_nm = 0, handbrake_nm = 0;                // rear brakes double as the handbrake
+    // Rear diff lock: Chrono's ShaftsDriveline2WD clutch between the axle shafts, created with modulation
+    // 0 (= open diff) and a fixed limit. We set its limit per step like AC's LSD: preload + power/coast
+    // fraction of the diff input torque; welded = a limit far above any tyre torque.
+    std::shared_ptr<ChShaftsClutch> diff_lock;
+    bool diff_welded = false;
+    double diff_power = 0, diff_coast = 0, diff_preload = 0, final_drive = 4.0;
     double accumulator = 0;
     double spin[4] = {0, 0, 0, 0};
     unsigned int contact_acc = 0;
@@ -370,6 +380,19 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
     c->idle_rpm = JsonNum(car, "idle_rpm", 900.0);
     c->rear_brake_nm = JsonNum(car, "rear_brake_nm", 0.0);
     c->handbrake_nm = JsonNum(car, "handbrake_nm", 0.0);
+    {
+        const std::string type = car.find("\"diff_type\": \"welded\"") != std::string::npos ? "welded" : "";
+        c->diff_welded = !type.empty();
+        c->diff_power = JsonNum(car, "diff_power", 0.0);
+        c->diff_coast = JsonNum(car, "diff_coast", 0.0);
+        c->diff_preload = JsonNum(car, "diff_preload_nm", 0.0);
+        c->final_drive = JsonNum(car, "final_drive", 4.0);
+        ChShaft* left = c->veh->GetAxle(1)->m_suspension->GetAxle(LEFT).get();
+        for (auto& item : c->veh->GetSystem()->GetOtherPhysicsItems())
+            if (auto cl = std::dynamic_pointer_cast<ChShaftsClutch>(item))
+                if (cl->GetShaft1() == left || cl->GetShaft2() == left) c->diff_lock = cl;
+        if (c->diff_lock) c->diff_lock->SetModulation(1.0);
+    }
     c->forward_gears =
         static_cast<int>(JsonVec(ReadFile(GetVehicleDataFile(JsonStr(car, "transmission"))), "Forward Gear Ratios").size());
     c->veh->GetChassis()->SetAerodynamicDrag(JsonNum(car, "cda", 0.7), 1.0, 1.2);
@@ -544,6 +567,11 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
             in.m_throttle = std::max(in.m_throttle, std::clamp((car->idle_rpm - rpm) / 250.0, 0.0, 0.6));
         in.m_braking = from.m_braking + (target.m_braking - from.m_braking) * k;
         car->veh->Synchronize(t, in, car->terrain);
+        if (car->diff_lock) {
+            const double t_in = car->veh->GetPowertrainAssembly()->GetOutputTorque() * car->final_drive;
+            const double f = t_in >= 0 ? car->diff_power : car->diff_coast;
+            car->diff_lock->SetTorqueLimit(car->diff_welded ? 1e5 : car->diff_preload + f * std::fabs(t_in));
+        }
         {
             const double rear = std::max(in.m_braking * service_share, handbrake);
             auto axle = car->veh->GetAxle(1);

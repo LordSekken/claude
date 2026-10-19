@@ -474,6 +474,11 @@ def build_car(ac_dir, spec_path, out_root):
                                         "idle_rpm": sp["idle_rpm"],
                                         "handbrake_nm": sp.get("handbrake_torque", 0.0) / 2,   # per rear wheel
                                         "rear_brake_nm": sp["brake_torque"] * (1 - sp["brake_bias"]) * 0.5,
+                                        # Rear diff (the DLL drives Chrono's lock clutch from these: AC-style
+                                        # preload + power/coast fraction of the input torque; welded = locked).
+                                        "diff_type": sp.get("diff_type", "open"), "diff_power": sp.get("diff_power", 0.0),
+                                        "diff_coast": sp.get("diff_coast", 0.0), "diff_preload_nm": sp.get("diff_preload", 0.0),
+                                        "final_drive": sp["final"],
                                         # DriftCore's body origin (mid-axles, wheel-centre height) in the
                                         # chassis reference frame, so models/cameras line up.
                                         "dc_origin": [(a - b) / 2, 0.0, (rf + rr) / 2],

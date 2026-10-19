@@ -30,3 +30,10 @@ target_link_libraries(dc_maneuvers PRIVATE DriftChrono)
 if(MSVC)
   set_target_properties(dc_maneuvers PROPERTIES MSVC_RUNTIME_LIBRARY ${CHRONO_MSVC_RUNTIME_LIBRARY})
 endif()
+
+# Straight-line L/R wheel-speed oscillation (diff lock chatter -> steering shake).
+add_executable(dc_osc tests/dc_osc.cpp)
+target_link_libraries(dc_osc PRIVATE DriftChrono)
+if(MSVC)
+  set_target_properties(dc_osc PROPERTIES MSVC_RUNTIME_LIBRARY ${CHRONO_MSVC_RUNTIME_LIBRARY})
+endif()
