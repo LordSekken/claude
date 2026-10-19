@@ -137,9 +137,9 @@ func _node() -> Node3D:
 
 
 func _mesh() -> MeshInstance3D:
-	f.get_8()  # cast shadows
+	var cast_shadows := f.get_8() != 0
 	var visible := f.get_8() != 0
-	f.get_8()  # transparent
+	var transparent := f.get_8() != 0
 	var vcount := f.get_32()
 	var raw := f.get_buffer(vcount * 44).to_float32_array()
 	var icount := f.get_32()
@@ -155,6 +155,8 @@ func _mesh() -> MeshInstance3D:
 	mi.set_meta("ac_renderable", renderable)
 	mi.set_meta("ac_lod_in", lod_in)
 	mi.set_meta("ac_lod_out", lod_out)
+	mi.set_meta("ac_cast_shadows", cast_shadows)
+	mi.set_meta("ac_transparent", transparent)
 	return mi
 
 

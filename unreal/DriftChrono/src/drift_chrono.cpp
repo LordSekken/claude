@@ -301,7 +301,10 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
     in.m_clutch = neutral ? 1.0 : std::clamp(1.0 - ctl->clutch_engage, 0.0, 1.0);
     const double rear_brake = std::max(in.m_braking, std::clamp(ctl->handbrake, 0.0, 1.0));
 
-    car->accumulator = std::min(car->accumulator + dt, 0.25);
+    // At most 30 ms of physics per frame (~9 ms of work): after a slow frame (loading, a hitch)
+    // the game briefly runs slow instead of catching up, which would make the next frame slower
+    // still - at a 0.25 s cap one hitch locked the game at ~8 fps.
+    car->accumulator = std::min(car->accumulator + dt, 0.03);
     int steps = 0;
     while (car->accumulator >= kStep) {
         const double t = sys->GetChTime();

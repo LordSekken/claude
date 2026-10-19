@@ -106,6 +106,11 @@ static func _mi(nm: String, mesh: ArrayMesh) -> MeshInstance3D:
 
 
 static func _collect(n: Node, out: Array[MeshInstance3D]) -> void:
+	# AC_* objects are AC's helpers (pit boxes, start grid, timing gates...): AC never draws
+	# them, but some tracks give them a little mesh - Brooklyn Park's 32 pit boxes became
+	# rows of white pyramids in the pit lane.
+	if str(n.name).to_upper().begins_with("AC_"):
+		return
 	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null and (n as MeshInstance3D).skin == null:
 		out.append(n)
 	for c in n.get_children():
