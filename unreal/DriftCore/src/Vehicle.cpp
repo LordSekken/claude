@@ -499,7 +499,12 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 	const Vec3 v_flat = vel_ - up * vel_.Dot(up);
 	drift_angle_ = v_flat.Length() > 2.0 ? Rad2Deg(std::atan2(v_flat.Dot(right), v_flat.Dot(fwd))) : 0.0;
 
-	// Force feedback: the real rack load from the external model, same fades/damper/spring as ours.
+	// Force feedback: AC's measured curve on the external model's front slip and load (rack_force_ref
+	// <= 0, the default), or the external model's own steering-rack load.
+	if (s.rack_force_ref <= 0.0) {
+		ComputeFfb(dt);
+		return;
+	}
 	ffb_time_ += dt;
 	const double speed = Speed();
 	double f = s.rack_force_ref > 0.0 ? s.rack_force / s.rack_force_ref : 0.0;
@@ -583,13 +588,15 @@ void Vehicle::UpdateDrivetrain(double dt) {
 // wall jolts and low-speed damping.
 namespace {
 // Steering rack force against front-axle slip angle, measured from the owner's
-// Assetto Corsa runs (BDC Miata, G920, 70 % gain; 37k samples): light around
-// centre, peaks at the tyres' limit, then stays strong while sliding - which is
-// what winds the rim into countersteer. Output is AC's finalFF scale.
+// Assetto Corsa runs (BDC Miata, G920, 70 % gain; 37k samples, refit 2026-10-18
+// on a 20 min Brooklyn drift session, 120k samples, slip from front-axle
+// kinematics): light around centre, peaks just past the tyres' limit, then stays
+// strong while sliding - which is what winds the rim into countersteer.
+// Output is AC's finalFF scale.
 struct FfbPoint { double slip_deg, force; };
 constexpr FfbPoint kFfbCurve[] = {
-	{0.0, 0.0}, {0.5, 0.105}, {1.5, 0.278}, {2.5, 0.397}, {4.0, 0.50}, {6.5, 0.579},
-	{10.0, 0.585}, {14.0, 0.511}, {19.0, 0.513}, {26.0, 0.517}, {37.0, 0.446}, {60.0, 0.35}, {90.0, 0.25}};
+	{0.0, 0.0}, {0.5, 0.105}, {1.5, 0.278}, {3.0, 0.443}, {5.0, 0.581}, {7.0, 0.603}, {9.0, 0.589},
+	{11.0, 0.517}, {14.0, 0.477}, {19.0, 0.47}, {24.0, 0.53}, {30.0, 0.48}, {37.0, 0.47}, {60.0, 0.35}, {90.0, 0.25}};
 
 double FfbCurve(double slip_deg) {
 	const double a = std::fabs(slip_deg);

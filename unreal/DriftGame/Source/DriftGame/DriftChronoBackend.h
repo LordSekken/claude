@@ -22,8 +22,8 @@ public:
 	// One frame: driver aids from Vehicle, Chrono physics, state back into Vehicle.
 	void Step(double Dt, drift::Vehicle& Vehicle, FDriftUnrealWorld& World);
 	double LastStepMs() const { return LastMs; }
-	// Rack force (N) that gives full force feedback; [DriftChrono] FfbRackForce.
-	double RackForceRef = 8000.0;
+	// Rack force (N) for full force feedback ([DriftChrono] FfbSource=Rack); 0 = AC's FFB curve.
+	double RackForceRef = 0.0;
 
 private:
 	FDriftChrono() = default;

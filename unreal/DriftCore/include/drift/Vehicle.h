@@ -166,7 +166,7 @@ public:
 		ExternalWheel wheel[4];
 		double rpm = 0.0;
 		double rack_force = 0.0;      // N, + pushes the wheels right
-		double rack_force_ref = 8000.0;   // rack force for full FFB
+		double rack_force_ref = 0.0;      // rack force for full FFB; <= 0: AC's measured FFB curve on our slip
 	};
 	Controls ControlStep(double dt);
 	void ApplyExternal(const ExternalState& s, double dt);

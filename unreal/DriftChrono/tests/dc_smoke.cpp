@@ -96,6 +96,8 @@ int main(int argc, char** argv) {
     Check(s.ang_vel[1] < -0.1, "turns right (negative yaw rate about +y)");
     Check(s.wheel[0].steer > 0.05 && s.wheel[1].steer > 0.05, "front wheels steer right (+)");
     Check(s.rack_force < -500, "road pushes the rack back towards centre (self-aligning)");
+    std::printf("  front slip angle in the right turn: FL %+.2f FR %+.2f deg\n", s.wheel[0].slip_angle * 57.3, s.wheel[1].slip_angle * 57.3);
+    Check(s.wheel[0].slip_angle < -0.005, "slip angle in DriftCore's sign (+ = travelling right of the wheel)");
     Check(s.wheel[0].fy > 500, "front tyre lateral force points right (into the turn)");
 
     // Smoothness: cruising straight at ~30 km/h, the rack force and the front wheel positions must
