@@ -13,6 +13,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "chrono/physics/ChLinkLock.h"
@@ -71,29 +72,80 @@ std::string JsonStr(const std::string& doc, const std::string& key) {
     return doc.substr(i + 1, doc.find('"', i + 1) - i - 1);
 }
 
-// The host's level as Chrono terrain: one ray per tyre query.
+// The host's level as Chrono terrain.
+//  - Cached: the ground is ray cast once per 5 cm grid cell (per 3 m height band, so bridges
+//    work) and remembered - the track is static, and rays are the expensive part.
+//  - Tyre envelope: Chrono's single-point contact sees a kerb edge as the ground jumping up
+//    under the wheel in one step (a 23 kN kick that rolled the car). Instead the height under a
+//    wheel is the highest ground point the round tyre would touch first, among samples up to
+//    0.8 r away: h_i - (r - sqrt(r^2 - d_i^2)). The contact normal then points from that point
+//    towards the wheel centre, so a kerb pushes the wheel back as well as up.
 class HostTerrain : public ChTerrain {
   public:
     dc_raycast_fn fn = nullptr;
     void* ctx = nullptr;
+    double radius = 0.3;
+    static constexpr double kGrid = 0.05;
+    static constexpr double kBand = 3.0;
+
+    struct Cell {
+        bool hit = false;
+        double h = 0;         // ISO height
+        ChVector3d n{0, 0, 1};
+        double grip = 1.0;
+    };
+
+    void Clear() { cache_.clear(); }
 
     void GetProperties(const ChVector3d& loc, ChVector3d& point, double& height, ChVector3d& normal,
                        float& friction) const override {
-        double from[3], to[3], p[3], n[3], grip = 1.0;
-        Dc(loc, from);
-        Dc(loc - ChVector3d(0, 0, 4.0), to);
-        if (fn && fn(ctx, from, to, p, n, &grip)) {
-            point = Iso(p);
-            normal = Iso(n);
-            height = point.z();
-            // Pac02 scales grip by mu_road / 0.8 (its "Coefficient of Friction") and clamps mu to 0.1..1.
-            friction = static_cast<float>(std::clamp(0.8 * grip, 0.1, 1.0));
-        } else {
+        // Chrono queries at the tyre's lowest point + 2r, so the wheel centre is r below loc.
+        // Pick the ground sample closest to the wheel centre; Chrono then measures the
+        // penetration against the plane through that point facing the centre, which is
+        // exactly r - distance (a plane through a point under the centre, tilted towards an
+        // edge, would sit far too close and gave 45 kN spikes on a kerb).
+        const double r = radius;
+        const ChVector3d C(loc.x(), loc.y(), loc.z() - r);
+        const int band = static_cast<int>(std::floor(loc.z() / kBand));
+        double best = 1e9, grip = 1.0, best_h = -1e6;
+        ChVector3d best_n(0, 0, 1), best_off(0, 0, 0);
+        bool any = false;
+        static const double kDirs[8][2] = {{1, 0}, {0.7071, 0.7071}, {0, 1}, {-0.7071, 0.7071},
+                                           {-1, 0}, {-0.7071, -0.7071}, {0, -1}, {0.7071, -0.7071}};
+        for (int ring = 0; ring <= 6; ++ring) {
+            const double d = r * 0.8 * ring / 6.0;
+            for (int k = 0; k < (ring == 0 ? 1 : 8); ++k) {
+                const double ox = kDirs[k][0] * d, oy = kDirs[k][1] * d;
+                Cell c = Bilinear(loc.x() + ox, loc.y() + oy, band);
+                if (!c.hit) continue;
+                const double below = std::max(0.0, C.z() - c.h);   // ground above the axle: touching side-on
+                const double dist = std::sqrt(d * d + below * below);
+                if (!any || dist < best - 1e-5) {
+                    any = true;
+                    best = dist;
+                    best_h = c.h;
+                    best_off = ChVector3d(ox, oy, 0);
+                    best_n = c.n;
+                    grip = c.grip;
+                }
+            }
+        }
+        if (!any) {
             point = ChVector3d(loc.x(), loc.y(), -1e6);
             normal = ChVector3d(0, 0, 1);
             height = -1e6;
             friction = 0.8f;
+            return;
         }
+        point = ChVector3d(loc.x() + best_off.x(), loc.y() + best_off.y(), best_h);
+        if (best_off.Length2() > 1e-8 && best > 1e-6) {
+            normal = (C - point) / best;   // from the touching point towards the wheel centre
+        } else {
+            normal = best_n;
+        }
+        height = best_h;
+        // Pac02 scales grip by mu_road / 0.8 (its "Coefficient of Friction") and clamps mu to 0.1..1.
+        friction = static_cast<float>(std::clamp(0.8 * grip, 0.1, 1.0));
     }
     double GetHeight(const ChVector3d& loc) const override {
         ChVector3d p, n;
@@ -123,6 +175,60 @@ class HostTerrain : public ChTerrain {
         GetProperties(loc, p, h, n, mu);
         return mu;
     }
+
+    size_t CachedCells() const { return cache_.size(); }
+
+  private:
+    mutable std::unordered_map<uint64_t, Cell> cache_;
+
+    const Cell& CellAt(int ix, int iy, int band) const {
+        const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(ix)) << 36) ^
+                             (static_cast<uint64_t>(static_cast<uint32_t>(iy) & 0xFFFFFFFu) << 8) ^
+                             static_cast<uint64_t>(static_cast<uint8_t>(band));
+        auto it = cache_.find(key);
+        if (it != cache_.end()) return it->second;
+        if (cache_.size() > 2000000) cache_.clear();
+        Cell c;
+        if (fn) {
+            const double top = (band + 1) * kBand + 1.0;
+            double from[3], to[3], p[3], n[3], grip = 1.0;
+            Dc(ChVector3d(ix * kGrid, iy * kGrid, top), from);
+            Dc(ChVector3d(ix * kGrid, iy * kGrid, band * kBand - 4.0), to);
+            if (fn(ctx, from, to, p, n, &grip)) {
+                c.hit = true;
+                c.h = Iso(p).z();
+                c.n = Iso(n);
+                c.grip = grip;
+            }
+        }
+        return cache_.emplace(key, c).first->second;
+    }
+
+    // Heights blended between the four surrounding cells; normal/grip from the nearest.
+    Cell Bilinear(double x, double y, int band) const {
+        const double fx = x / kGrid, fy = y / kGrid;
+        const int ix = static_cast<int>(std::floor(fx)), iy = static_cast<int>(std::floor(fy));
+        const double tx = fx - ix, ty = fy - iy;
+        const Cell* c[4] = {&CellAt(ix, iy, band), &CellAt(ix + 1, iy, band), &CellAt(ix, iy + 1, band),
+                            &CellAt(ix + 1, iy + 1, band)};
+        const double w[4] = {(1 - tx) * (1 - ty), tx * (1 - ty), (1 - tx) * ty, tx * ty};
+        Cell out;
+        double wsum = 0, best_w = -1;
+        for (int k = 0; k < 4; ++k) {
+            if (!c[k]->hit) continue;
+            out.h += c[k]->h * w[k];
+            wsum += w[k];
+            if (w[k] > best_w) {
+                best_w = w[k];
+                out.n = c[k]->n;
+                out.grip = c[k]->grip;
+            }
+        }
+        if (wsum <= 1e-9) return out;
+        out.h /= wsum;
+        out.hit = true;
+        return out;
+    }
 };
 
 struct Contact {
@@ -137,6 +243,9 @@ struct Contact {
 struct dc_car {
     std::unique_ptr<WheeledVehicle> veh;
     HostTerrain terrain;
+    // Every body's design pose relative to the chassis reference frame: a reset restores the
+    // suspension layout exactly (a crash could leave it bent, and the car wobbled after a reset).
+    std::vector<std::pair<std::shared_ptr<ChBody>, ChFrame<>>> design;
     ChVector3d dc_origin;   // DriftCore origin in the chassis reference frame (ISO)
     double lock = 0.9;
     double mass = 1200;
@@ -221,6 +330,12 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
     const auto o = JsonVec(car, "dc_origin");
     c->dc_origin = o.size() == 3 ? ChVector3d(o[0], o[1], o[2]) : ChVector3d(0, 0, 0.3);
     c->mass = c->veh->GetMass();
+    c->terrain.radius = WheelAt(c.get(), 0)->GetTire() ? WheelAt(c.get(), 0)->GetTire()->GetRadius() : 0.3;
+    {
+        const ChFrame<> ref_inv = ChassisRef(c.get()).GetInverse();
+        for (auto& b : c->veh->GetSystem()->GetBodies())
+            if (!b->IsFixed()) c->design.emplace_back(b, ref_inv * ChFrame<>(b->GetPos(), b->GetRot()));
+    }
 
     ChSystem* sys = c->veh->GetSystem();
     sys->SetCollisionSystemType(ChCollisionSystem::Type::BULLET);
@@ -255,11 +370,9 @@ DC_API void dc_reset(dc_car* car, const double origin[3], const double rot[9]) {
     const ChQuaternion<> q = m.GetQuaternion();
     const ChVector3d ref_pos = Iso(origin) - q.Rotate(car->dc_origin);
     const ChFrame<> target(ref_pos, q);
-    const ChFrame<> delta = target * ChassisRef(car).GetInverse();
     ChSystem* sys = car->veh->GetSystem();
-    for (auto& b : sys->GetBodies()) {
-        if (b->IsFixed()) continue;
-        const ChFrame<> f = delta * ChFrame<>(b->GetPos(), b->GetRot());
+    for (auto& [b, rel] : car->design) {
+        const ChFrame<> f = target * rel;
         b->SetPos(f.GetPos());
         b->SetRot(f.GetRot());
         b->SetPosDt(VNULL);

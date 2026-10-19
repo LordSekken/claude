@@ -150,6 +150,7 @@ private:
 	TUniquePtr<FDriftChrono> Chrono;    // Project Chrono physics; null = DriftCore
 	double PhysicsShownUntil = 0.0;
 	double NextPhysicsLog = 0.0;
+	bool bAutoShotDone = false;
 	bool bLocalStarted = false;
 	double NextNetSend = 0.0;
 	double NextNetLog = 0.0;

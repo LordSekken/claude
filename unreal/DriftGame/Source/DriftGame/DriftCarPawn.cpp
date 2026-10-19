@@ -36,6 +36,8 @@
 // Test autopilot for headless runs: >= 0 overrides the pedals / steering of the local car.
 static TAutoConsoleVariable<float> CVarAutoThrottle(TEXT("drift.AutoThrottle"), -1.f, TEXT("Test: throttle 0..1 (-1 = off)"));
 static TAutoConsoleVariable<float> CVarAutoSteer(TEXT("drift.AutoSteer"), -2.f, TEXT("Test: steering -1..1 (-2 = off)"));
+static TAutoConsoleVariable<float> CVarAutoShot(TEXT("drift.AutoShot"), 0.f, TEXT("Test: take a HighResShot this many seconds into play (0 = off)"));
+static TAutoConsoleVariable<float> CVarAutoQuit(TEXT("drift.AutoQuit"), 0.f, TEXT("Test: quit this many seconds into play (0 = off)"));
 static TAutoConsoleVariable<int32> CVarPhysicsLog(TEXT("drift.PhysicsLog"), 0, TEXT("Log car state once a second"));
 static TAutoConsoleVariable<int32> CVarNoWheel(TEXT("drift.NoWheel"), 0, TEXT("1 = don't start the wheel/FFB helper (unattended tests)"));
 static TAutoConsoleVariable<int32> CVarUseDriftCore(TEXT("drift.UseDriftCore"), 0, TEXT("1 = start on DriftCore physics instead of Chrono (set before Play)"));
@@ -152,7 +154,7 @@ void ADriftCarPawn::StartLocal()
 	LastOnRoadYaw = GetActorRotation().Yaw;
 	LowestY = Vehicle->Origin().y - 300.0;
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
-	if (CVarNoWheel.GetValueOnGameThread() == 0)
+	if (CVarNoWheel.GetValueOnGameThread() == 0 && !FParse::Param(FCommandLine::Get(), TEXT("NoWheel")))
 	{
 		Wheel = std::make_unique<FDriftWheel>();
 		Wheel->Start();
@@ -606,6 +608,22 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 		Vehicle->in.steer = CVarAutoSteer.GetValueOnGameThread();
 		Vehicle->in.direct_steer = true;
 	}
+	{
+		const double Played = GetWorld()->GetTimeSeconds();
+		const float Shot = CVarAutoShot.GetValueOnGameThread(), Quit = CVarAutoQuit.GetValueOnGameThread();
+		if (Shot > 0.f && Played >= Shot && !bAutoShotDone)
+		{
+			bAutoShotDone = true;
+			if (APlayerController* PC = GetWorld()->GetFirstPlayerController())
+			{
+				PC->ConsoleCommand(TEXT("HighResShot 1600x900"));   // a viewport command, not an engine one
+			}
+		}
+		if (Quit > 0.f && Played >= Quit)
+		{
+			FPlatformMisc::RequestExit(false);
+		}
+	}
 	if (CVarPhysicsLog.GetValueOnGameThread() && FPlatformTime::Seconds() >= NextPhysicsLog)
 	{
 		NextPhysicsLog = FPlatformTime::Seconds() + 1.0;
@@ -628,7 +646,9 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 		LastOnRoadYaw = GetActorRotation().Yaw;
 	}
 	// Fell off the world: put it back where it was last on the road.
-	if (Vehicle->Origin().y < LowestY)
+	// (or more than 8 m below where it was last on the road: it went through the ground - don't
+	// make the driver watch a 300 m fall).
+	if (Vehicle->Origin().y < LowestY || Vehicle->Origin().y < LastOnRoad.Z * 0.01 - 8.0)
 	{
 		ResetCar(LastOnRoad, LastOnRoadYaw);
 	}

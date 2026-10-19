@@ -3,6 +3,7 @@
 //   dc_smoke <car root> <car id>
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 
 #include "drift_chrono.h"
 
@@ -10,6 +11,18 @@ namespace {
 int Flat(void*, const double from[3], const double to[3], double p[3], double n[3], double* grip) {
     if (from[1] < 0 || to[1] > 0) return 0;
     const double t = from[1] / (from[1] - to[1]);
+    for (int i = 0; i < 3; ++i) p[i] = from[i] + (to[i] - from[i]) * t;
+    n[0] = 0, n[1] = 1, n[2] = 0;
+    *grip = 1.0;
+    return 1;
+}
+
+// Flat ground with a 15 cm kerb (vertical step) for z < kKerbZ.
+constexpr double kKerbZ = -25.0;
+int Kerb(void*, const double from[3], const double to[3], double p[3], double n[3], double* grip) {
+    const double h = from[2] < kKerbZ ? 0.15 : 0.0;
+    if (from[1] < h || to[1] > h) return 0;
+    const double t = (from[1] - h) / (from[1] - to[1]);
     for (int i = 0; i < 3; ++i) p[i] = from[i] + (to[i] - from[i]) * t;
     n[0] = 0, n[1] = 1, n[2] = 0;
     *grip = 1.0;
@@ -154,6 +167,43 @@ int main(int argc, char** argv) {
     dc_get_state(car, &s);
     std::printf("wall: hit at %.1f km/h, deepest %.2f m, now %.1f km/h\n", v0 * 3.6, -min_gap, Speed(s) * 3.6);
     Check(-min_gap < 0.5 && Speed(s) < 5, "wall stops the car without passing through");
+
+    // Kerb: 15 cm step crossed at ~12 km/h, straight on and at 30 deg.
+    for (double yaw_deg : {0.0, 30.0}) {
+        dc_destroy(car);
+        car = dc_create(argv[1], argv[2], err, sizeof(err));
+        dc_set_ground(car, Kerb, nullptr);
+        const double a = yaw_deg / 57.2958;
+        // DriftCore columns (right, up, back) for a heading turned by `a` to the left.
+        const double r9[9] = {std::cos(a), 0, -std::sin(a), 0, 1, 0, std::sin(a), 0, std::cos(a)};
+        const double o[3] = {0, 0.30, -10.0};
+        dc_reset(car, o, r9);
+        c = {0, 0.25, 0, 0, 1, 1};
+        double max_roll = 0, max_fz = 0, top_y = 0;
+        for (int i = 0; i < 800; ++i) {
+            dc_step(car, 0.01, &c, nullptr, 0);
+            dc_get_state(car, &s);
+            c.throttle = Speed(s) > 12 / 3.6 ? 0.15 : 0.4;   // hold ~12 km/h, keep pushing at the kerb
+            max_roll = std::fmax(max_roll, std::fabs(std::asin(std::fmin(1.0, std::fabs(s.rot[1])))) * 57.3);   // right.y
+            for (auto& w : s.wheel) max_fz = std::fmax(max_fz, w.fz);
+            top_y = std::fmax(top_y, s.origin[1]);
+        }
+        std::printf("kerb at %.0f deg: max roll %.1f deg, max wheel load %.0f N, origin now y %.2f (top %.2f), z %.1f\n",
+                    yaw_deg, max_roll, max_fz, s.origin[1], top_y, s.origin[2]);
+        // A square 15 cm step at 12 km/h is a real impact (~20-25 kN on a tyre); the old single-point
+        // contact gave a 23 kN kick sideways that rolled the car 84 deg.
+        Check(max_roll < 10 && max_fz < 35000 && top_y - s.origin[1] < 0.3, "climbs a 15 cm kerb without a launch or a roll");
+        Check(s.origin[2] < kKerbZ - 3 && s.origin[1] > 0.38, "ends up on top of the kerb");
+    }
+    // Reset restores the design layout: loads symmetric left/right afterwards.
+    dc_set_ground(car, Flat, nullptr);
+    dc_reset(car, origin, rot);
+    c = {0, 0, 1, 0, 1, 0};
+    for (int i = 0; i < 150; ++i) dc_step(car, 0.01, &c, nullptr, 0);
+    dc_get_state(car, &s);
+    std::printf("after reset: loads %.0f %.0f %.0f %.0f\n", s.wheel[0].fz, s.wheel[1].fz, s.wheel[2].fz, s.wheel[3].fz);
+    Check(std::fabs(s.wheel[0].fz - s.wheel[1].fz) < 150 && std::fabs(s.wheel[2].fz - s.wheel[3].fz) < 150,
+          "reset restores a level, symmetric car");
 
     dc_destroy(car);
     std::printf(failures ? "%d FAILED\n" : "all passed\n", failures);

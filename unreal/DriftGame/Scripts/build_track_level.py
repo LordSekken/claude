@@ -275,6 +275,20 @@ def set_collision(mesh, enabled):
         unreal.log_warning("[DriftGame] collision setup failed on %s: %s" % (mesh.get_name(), e))
 
 
+def set_nanite(mesh, enabled):
+    # glTF-imported materials (AC tracks keep their own) inherit Unreal's
+    # /InterchangeAssets/gltf/M_Default, which isn't flagged "Used with Nanite": the
+    # standalone game then draws every Nanite mesh with the default material.
+    try:
+        s = mesh.get_editor_property("nanite_settings")
+        if s.get_editor_property("enabled") != enabled:
+            s.set_editor_property("enabled", enabled)
+            mesh.set_editor_property("nanite_settings", s)
+            eal.save_loaded_asset(mesh)
+    except Exception as e:
+        unreal.log_warning("[DriftGame] couldn't set Nanite on %s: %s" % (mesh.get_name(), e))
+
+
 def remove_simple_collision(mesh):
     try:
         unreal.get_editor_subsystem(unreal.StaticMeshEditorSubsystem).remove_collisions(mesh)
@@ -350,6 +364,8 @@ def build(folder):
             continue
         # Trees, painted lines and AC scenery chunks (VIS_*) are visual only.
         visual_only = "TREE" in upper or "LINE" in upper or upper.startswith("VIS")
+        if keep_materials:
+            set_nanite(mesh, False)
         set_collision(mesh, not visual_only)
         actor = eas.spawn_actor_from_object(mesh, unreal.Vector(0, 0, 0), unreal.Rotator())
         actor.set_actor_label(name)
