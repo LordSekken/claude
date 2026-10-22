@@ -6,6 +6,6 @@ here="$(cd "$(dirname "$0")" && pwd)"
 out="${1:-$here/../../build/windows}"
 mkdir -p "$out"
 x86_64-w64-mingw32-gcc -O2 -Wall -o "$out/ffb_helper.exe" "$here/ffb_helper.c" \
-  -I"$SDL3_DIR/include" -L"$SDL3_DIR/lib" -lSDL3 -lws2_32 -ldinput8 -ldxguid -luser32 -mconsole
+  -I"$SDL3_DIR/include" -L"$SDL3_DIR/lib" -lSDL3 -lws2_32 -ldinput8 -ldxguid -luser32 -lwinmm -mconsole
 cp "$SDL3_DIR/bin/SDL3.dll" "$out/"
 echo "built $out/ffb_helper.exe"

@@ -213,6 +213,12 @@ void FDriftChrono::Step(double Dt, drift::Vehicle& Vehicle, FDriftUnrealWorld& I
 		X.fy = W.fy;
 		X.slip_ratio = W.slip_ratio;
 		X.slip_angle = W.slip_angle;
+		// Front surfaces for the FFB effects (kerb rumble); Chrono only got a grip factor.
+		if (I < 2 && W.contact)
+		{
+			const drift::Vec3 P = FromArr(W.point);
+			X.surface = InWorld.Raycast(P + drift::Vec3(0, 0.3, 0), P - drift::Vec3(0, 0.3, 0)).surface;
+		}
 	}
 	E.rpm = S.rpm;
 	E.rack_force = S.rack_force;

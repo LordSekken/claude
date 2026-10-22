@@ -662,7 +662,11 @@ void ADriftCarPawn::Tick(float DeltaSeconds)
 	SendNetState();
 	if (Wheel)
 	{
-		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()), static_cast<float>(Vehicle->FfbSpring()));
+		Vehicle->ffb_fx.road = Wheel->Map.FfbRoad;
+		Vehicle->ffb_fx.kerb = Wheel->Map.FfbKerb;
+		Vehicle->ffb_fx.slip = Wheel->Map.FfbSlip;
+		Wheel->SendForce(static_cast<float>(Vehicle->FfbForce()), static_cast<float>(Vehicle->FfbDamper()), static_cast<float>(Vehicle->FfbSpring()),
+			static_cast<float>(Vehicle->FfbVibAmp()), static_cast<float>(Vehicle->FfbVibHz()));
 	}
 }
 

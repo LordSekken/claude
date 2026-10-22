@@ -185,8 +185,13 @@ vite files) is an unrelated web app.
   on the tyre spring under driveline surge -> scrub radius -> rim shake (11 -> 0.02 N m p-p). HostTerrain CellAt
   returned a reference into a cache that clears at 2M cells -> crash after a few km; now by value.
   Default map back to brooklyn_park. Open: rim-in-the-loop hands-off drift (test 8) tank-slaps at full throttle.
-- Next: FFB loop at >=333 Hz (helper extrapolation), G920
-  min-force/LUT, sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
+- FFB delivery (2026-10-22, ideas from irFFB, GPLv3 - reimplemented, not copied): ffb_helper runs at 1 kHz
+  (timeBeginPeriod 1) with a 4 ms reconstruction filter on the per-frame force, and synthesises vibration
+  (DLFB packet now 28 bytes: + vib_amp, vib_hz). DriftCore ApplyExternal adds AC-like effects: road (front
+  load high-pass L-R), kerb rumble (front wheel on KERB, f = v/0.6 m), slip buzz (front slip > 6 deg, 40 Hz);
+  gains [DriftWheel] FfbRoad/FfbKerb/FfbSlip. Owner's AC g920.lut is near-linear, so no min force added.
+  Helper build: MSVC + SDL3-devel-3.2.8-VC (scratchpad, re-download if gone) + winmm.lib.
+- Next: G920 sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)
 `drift-sim/scripts/track/drift_circuit_generator.gd` (DriftCircuitGenerator.generate({seed, length, width, scale,

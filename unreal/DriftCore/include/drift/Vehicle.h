@@ -140,6 +140,14 @@ public:
 	double FfbForce() const { return ffb_force_; }
 	double FfbDamper() const { return ffb_damper_; }
 	double FfbSpring() const { return ffb_spring_; }   // 0..1 centring spring (strong when parked)
+	// Vibration on top of FfbForce (kerb rumble, tyre slip buzz): amplitude 0..1 and frequency, for the
+	// wheel driver to synthesise at its own (kHz) rate - at frame rate it would alias.
+	double FfbVibAmp() const { return ffb_vib_amp_; }
+	double FfbVibHz() const { return ffb_vib_hz_; }
+	// Effect gains (like AC's road / kerb / slip FFB settings), 0..1+. External physics path.
+	struct FfbEffects {
+		double road = 0.5, kerb = 0.3, slip = 0.15;
+	} ffb_fx;
 
 	// --- External physics (e.g. Project Chrono through DriftChrono) ---------
 	// The host runs ControlStep for the driver aids (steering assist, auto
@@ -158,6 +166,7 @@ public:
 		bool contact = false;
 		Vec3 point;
 		double fz = 0.0, fx = 0.0, fy = 0.0, slip_ratio = 0.0, slip_angle = 0.0;
+		Surface surface = Surface::Asphalt;
 	};
 	struct ExternalState {
 		Vec3 origin;
@@ -232,6 +241,8 @@ private:
 	double accumulator_ = 0.0;
 
 	double ffb_force_ = 0.0, ffb_damper_ = 0.0, ffb_spring_ = 0.0;
+	double ffb_vib_amp_ = 0.0, ffb_vib_hz_ = 0.0;
+	double ffb_fz_lp_[2] = {0.0, 0.0};
 	double ffb_jolt_ = 0.0, ffb_jolt_t_ = 0.0, ffb_time_ = 0.0;
 	unsigned rng_ = 12345u;
 	std::vector<BodyContact> contacts_;

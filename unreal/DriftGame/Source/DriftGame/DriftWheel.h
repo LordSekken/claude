@@ -18,6 +18,8 @@ struct FDriftWheelMapping
 	int32 FirstGearButton = 12;    // H-shifter: gears 1..6 on consecutive buttons (-1 = none)
 	int32 ReverseButton = 11;      // Driving Force Shifter on the Xbox G920: R comes first
 	float FfbGain = 1.f;
+	// Effects on top of the steering torque (like AC's road / kerb / slip settings, 0..1+).
+	float FfbRoad = 0.5f, FfbKerb = 0.3f, FfbSlip = 0.15f;
 	bool bFfbInvert = false;       // if the test pulls right first
 	bool bTrace = false;           // helper logs forces + wheel angle to %TEMP%\DriftLab_ffb.log
 
@@ -32,7 +34,7 @@ public:
 	void Start();
 	void Stop();
 	void Poll();
-	void SendForce(float Force, float Damper, float Spring);
+	void SendForce(float Force, float Damper, float Spring, float VibAmp = 0.f, float VibHz = 0.f);
 	void RunTest();
 
 	bool HasControls() const { return FPlatformTime::Seconds() - LastInput < 0.5; }

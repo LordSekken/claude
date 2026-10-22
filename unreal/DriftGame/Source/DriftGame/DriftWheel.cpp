@@ -40,6 +40,9 @@ void FDriftWheelMapping::Load()
 	GConfig->GetInt(S, TEXT("FirstGearButton"), FirstGearButton, GGameIni);
 	GConfig->GetInt(S, TEXT("ReverseButton"), ReverseButton, GGameIni);
 	GConfig->GetFloat(S, TEXT("FfbGain"), FfbGain, GGameIni);
+	GConfig->GetFloat(S, TEXT("FfbRoad"), FfbRoad, GGameIni);
+	GConfig->GetFloat(S, TEXT("FfbKerb"), FfbKerb, GGameIni);
+	GConfig->GetFloat(S, TEXT("FfbSlip"), FfbSlip, GGameIni);
 	GConfig->GetBool(S, TEXT("FfbInvert"), bFfbInvert, GGameIni);
 	GConfig->GetBool(S, TEXT("Trace"), bTrace, GGameIni);
 }
@@ -136,16 +139,18 @@ void FDriftWheel::Poll()
 	}
 }
 
-void FDriftWheel::SendForce(float Force, float Damper, float Spring)
+void FDriftWheel::SendForce(float Force, float Damper, float Spring, float VibAmp, float VibHz)
 {
 	if (!Tx)
 	{
 		return;
 	}
-	// "DLFB" force(-1..1, +right) damper spring gain
-	uint8 Buf[20];
+	// "DLFB" force(-1..1, +right) damper spring gain vib_amp vib_hz (the helper smooths the force and
+	// synthesises the vibration at 1 kHz)
+	uint8 Buf[28];
 	FMemory::Memcpy(Buf, "DLFB", 4);
-	const float Vals[4] = {FMath::Clamp(Map.bFfbInvert ? -Force : Force, -1.f, 1.f), FMath::Clamp(Damper, 0.f, 1.f), FMath::Clamp(Spring, 0.f, 1.f), Map.FfbGain};
+	const float Vals[6] = {FMath::Clamp(Map.bFfbInvert ? -Force : Force, -1.f, 1.f), FMath::Clamp(Damper, 0.f, 1.f), FMath::Clamp(Spring, 0.f, 1.f), Map.FfbGain,
+		FMath::Clamp(VibAmp, 0.f, 0.5f), FMath::Clamp(VibHz, 0.f, 200.f)};
 	FMemory::Memcpy(Buf + 4, Vals, sizeof(Vals));
 	int32 Sent = 0;
 	Tx->SendTo(Buf, sizeof(Buf), Sent, *HelperAddr());

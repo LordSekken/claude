@@ -31,6 +31,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <dinput.h>
+#include <mmsystem.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -429,7 +430,13 @@ int main(int argc, char **argv) {
 	find_ffb();
 	if (!fx_const) open_input();
 	Uint64 last_scan = SDL_GetTicks();
-	float force = 0, damper = 0, spring = 0, gain = 1;
+	float force = 0, damper = 0, spring = 0, gain = 1, vib_amp = 0, vib_hz = 0;
+	/* irFFB-style delivery: the game sends one force per frame (60-200 Hz); stepping a gear-driven
+	 * wheel at that rate feels grainy. Run at 1 kHz, smooth the force with a 4 ms reconstruction
+	 * filter and synthesise vibrations (kerb, tyre slip) here, where they don't alias. */
+	float smooth = 0, vib_phase = 0;
+	Uint64 last_tick_ns = SDL_GetTicksNS();
+	timeBeginPeriod(1);
 	Uint64 last_force = 0;
 	Uint64 test_until = 0;
 	Uint64 last_status = 0;
@@ -450,6 +457,12 @@ int main(int argc, char **argv) {
 				memcpy(&damper, buf + 8, 4);
 				memcpy(&spring, buf + 12, 4);
 				memcpy(&gain, buf + 16, 4);
+				if (n >= 28) {
+					memcpy(&vib_amp, buf + 20, 4);
+					memcpy(&vib_hz, buf + 24, 4);
+				} else {
+					vib_amp = vib_hz = 0;
+				}
 			} else if (memcmp(buf, "DLQT", 4) == 0) {
 				running = 0;
 			} else if (memcmp(buf, "DLTS", 4) == 0) {
@@ -483,6 +496,18 @@ int main(int argc, char **argv) {
 			if (gain > 1.5f) gain = 1.5f;
 			f *= gain;
 		}
+		{
+			const Uint64 tick_ns = SDL_GetTicksNS();
+			const float dt = SDL_clamp((float)(tick_ns - last_tick_ns) * 1e-9f, 0.0f, 0.05f);
+			last_tick_ns = tick_ns;
+			smooth += (f - smooth) * (1.0f - SDL_expf(-dt / 0.004f));
+			f = smooth;
+			if (now - last_force <= 250 && vib_amp > 0.0f && vib_hz > 0.0f) {
+				vib_phase += 6.2831853f * vib_hz * dt;
+				if (vib_phase > 6.2831853f) vib_phase -= 6.2831853f;
+				f += vib_amp * gain * SDL_sinf(vib_phase);
+			}
+		}
 		ff_apply(f, d, s);
 		if (trace && now - last_trace >= 100) {
 			last_trace = now;
@@ -495,8 +520,9 @@ int main(int argc, char **argv) {
 			logmsg("trace t=%llu force=%+.3f damper=%.2f spring=%.2f dir=%ld mag=%ld wheel=%+.3f restarts=%u",
 				(unsigned long long)now, f, d, s, (long)ff_dir[0], (long)cf.lMagnitude, wheel, restarts);
 		}
-		SDL_Delay(2);
+		Sleep(1);
 	}
+	timeEndPeriod(1);
 	ff_release();
 	if (di) di->lpVtbl->Release(di);
 	if (wheel_js) SDL_CloseJoystick(wheel_js);

@@ -564,7 +564,7 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 		wh.fy = e.fy;
 		wh.slip_ratio = e.slip_ratio;
 		wh.slip_angle = e.slip_angle;
-		wh.surface = Surface::Asphalt;
+		wh.surface = e.surface;
 		if (wh.contact) ++on_road_wheels_;
 		if (wh.front && wh.contact) slip_sum += wh.slip_angle * wh.fz, fz_sum += wh.fz;
 	}
@@ -589,7 +589,32 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 	} else {
 		f = s.rack_force / s.rack_force_ref;
 	}
-	f *= Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
+	const double moving = Clamp((speed - 0.5) / 3.0, 0.0, 1.0);
+	f *= moving;
+
+	// Road feel (AC's "road" effect, physically motivated): the steering geometry turns a quick change in
+	// one front wheel's load (a bump, a seam, a kerb edge) into a kick at the rim. High-pass each front
+	// load (60 ms) and feed the left-right difference; + = the right wheel loaded -> rim pushed right.
+	double kerb = 0.0, slip = 0.0;
+	{
+		double hp[2];
+		const double a = Clamp(dt / 0.06, 0.0, 1.0);
+		for (int k = 0; k < 2; ++k) {
+			const WheelState& wh = wheels_[static_cast<size_t>(k)];
+			if (ffb_fz_lp_[k] <= 0.0) ffb_fz_lp_[k] = wh.fz;
+			ffb_fz_lp_[k] += (wh.fz - ffb_fz_lp_[k]) * a;
+			hp[k] = wh.fz - ffb_fz_lp_[k];
+			if (wh.contact && wh.surface == Surface::Kerb) kerb += 0.5;
+			// Past the front tyres' peak (~6 deg on street tyres): the scrubbing tread buzzes.
+			if (wh.contact) slip += 0.5 * Clamp((std::fabs(wh.slip_angle) - 0.10) / 0.15, 0.0, 1.0) * Clamp(speed / 10.0, 0.0, 1.0);
+		}
+		const double ref = spec_.mass * kGravity * 0.25;
+		f += ffb_fx.road * 0.6 * Clamp((hp[1] - hp[0]) / ref, -0.5, 0.5) * moving;
+	}
+	// Kerb rumble ~ stripe spacing 0.6 m; tread buzz ~ 40 Hz.
+	const double kerb_amp = ffb_fx.kerb * 0.35 * kerb * moving, slip_amp = ffb_fx.slip * 0.12 * slip;
+	ffb_vib_amp_ = std::max(kerb_amp, slip_amp);
+	ffb_vib_hz_ = kerb_amp >= slip_amp ? Clamp(speed / 0.6, 8.0, 60.0) : 40.0;
 	if (ffb_jolt_t_ > 0.0) {
 		ffb_jolt_t_ -= dt;
 		f += ffb_jolt_;
