@@ -262,6 +262,7 @@ struct dc_car {
     bool have_last_in = false;
     double rack_avg = 0;
     double torque_avg = 0;
+    double col_parts[4] = {0, 0, 0, 0};   // column torque split (debug): vertical, lateral, longitudinal, Mz
     double steer_ratio = 12.0;   // steering-wheel angle per road-wheel angle (nominal, on centre)
     double steer_input = 0;      // current Chrono steering input (-1..1, + left)
     std::vector<double> steer_gain;   // d(road wheel)/d(rim) vs input, 41 samples over -1..1
@@ -303,6 +304,7 @@ double ColumnTorque(dc_car* c) {
     auto dwb = std::dynamic_pointer_cast<ChDoubleWishbone>(c->veh->GetAxle(0)->m_suspension);
     if (!dwb) return 0.0;
     double about_kingpins = 0.0;   // + = steers the wheels left (ISO, Z up)
+    double parts[4] = {0, 0, 0, 0};   // vertical, lateral, longitudinal force, tyre moment
     for (auto side : {LEFT, RIGHT}) {
         auto tire = c->veh->GetWheel(0, side)->GetTire();
         if (!tire) continue;
@@ -310,7 +312,14 @@ double ColumnTorque(dc_car* c) {
         const ChVector3d k = (dwb->GetBallJointPosUCA(side) - lbj).GetNormalized();
         const TerrainForce f = tire->ReportTireForce(&c->terrain);   // force + moment at the wheel centre, global
         about_kingpins += Vdot(k, Vcross(f.point - lbj, f.force) + f.moment);
+        const ChVector3d up = c->veh->GetChassisBody()->GetRot().GetAxisZ();
+        const ChVector3d axle = c->veh->GetWheel(0, side)->GetSpindle()->GetRot().GetAxisY();
+        const ChVector3d lat = (axle - up * Vdot(axle, up)).GetNormalized(), lon = Vcross(lat, up);
+        const ChVector3d comp[3] = {up * Vdot(f.force, up), lat * Vdot(f.force, lat), lon * Vdot(f.force, lon)};
+        for (int i = 0; i < 3; ++i) parts[i] += Vdot(k, Vcross(f.point - lbj, comp[i]));
+        parts[3] += Vdot(k, f.moment);
     }
+    for (int i = 0; i < 4; ++i) c->col_parts[i] = -parts[i] * c->SteerGain(c->steer_input);
     // d(road-wheel angle)/d(rim angle) at the current steering input: the rack geometry is non-linear
     // (BDC Miata: 8.4:1 on centre, 6.8:1 near lock), measured at load time.
     return -about_kingpins * c->SteerGain(c->steer_input);
@@ -650,3 +659,9 @@ DC_API void dc_get_state(const dc_car* car, dc_state* s) {
 DC_API double dc_last_step_us(const dc_car* car) { return car->last_us; }
 
 }  // extern "C"
+
+// Debug: the last step's column torque split into the vertical-force (jacking), lateral-force,
+// longitudinal-force and tyre-moment parts (N m at the rim, same sign as steer_torque).
+DC_API void dc_debug_column(dc_car* car, double out[4]) {
+    for (int i = 0; i < 4; ++i) out[i] = car->col_parts[i];
+}

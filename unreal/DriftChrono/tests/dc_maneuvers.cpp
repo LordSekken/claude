@@ -239,6 +239,16 @@ void TestCircle(Sim& m) {
         m.Cruise(vt);
         m.Step();
         const double ay_ss = m.speed * m.yaw / kG;   // steady-state lateral accel, g
+        if (std::getenv("DC_COL_TRACE")) {
+            static double next_g = 0.05;
+            if (std::fabs(ay_ss) >= next_g) {
+                double p[4];
+                dc_debug_column(m.car, p);
+                std::printf("  col %.2f g  %5.1f km/h  steer %+5.2f deg  total %+6.2f Nm = vert %+6.2f lat %+6.2f long %+6.2f Mz %+6.2f\n",
+                            ay_ss, m.speed * 3.6, m.steer * kDeg, m.s.steer_torque, p[0], p[1], p[2], p[3]);
+                next_g += 0.1;
+            }
+        }
         // Max lateral g: 1 s mean of the measured (accelerometer) lateral accel, only while the
         // car is on the circle with a sane sideslip (the spin at the limit inflates V*r).
         const bool tracking = std::fabs(pc.e) < 1.0 && std::fabs(m.beta) < 0.1;

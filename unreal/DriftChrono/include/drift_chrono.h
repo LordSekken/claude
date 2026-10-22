@@ -81,6 +81,10 @@ typedef struct dc_state {
 
 DC_API int dc_version(void);
 
+/* Debug: last step's column torque split into vertical / lateral / longitudinal force and tyre
+   moment parts (N m at the rim). */
+DC_API void dc_debug_column(dc_car* car, double out[4]);
+
 /* Loads <car_root>/<car_id>/car.json (written by drift-sim/tools/ac_to_chrono.py).
    Returns NULL on failure with a message in err. */
 DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, int err_len);

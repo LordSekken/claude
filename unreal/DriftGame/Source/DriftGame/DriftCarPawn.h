@@ -111,6 +111,9 @@ public:
 	FString GetPhysicsName() const { return Chrono ? TEXT("Chrono") : TEXT("DriftCore"); }
 	double GetPhysicsMs() const { return Chrono ? Chrono->LastStepMs() : 0.0; }
 	double GetPhysicsShownUntil() const { return PhysicsShownUntil; }
+	/** Wheel force message ("Wheel force 110%") and until when to show it. */
+	const FString& GetFfbMessage() const { return FfbMessage; }
+	double GetFfbShownUntil() const { return FfbShownUntil; }
 	double GetGraphicsShownUntil() const { return GraphicsShownUntil; }
 
 protected:
@@ -140,6 +143,12 @@ private:
 	void OnResetToSpawn();   // back to where the car started (wheel B, Backspace, gamepad Menu)
 	void OnToggleAutoShift();
 	void OnFfbTest();
+	void OnFfbStronger() { AdjustFfbStrength(1); }
+	void OnFfbWeaker() { AdjustFfbStrength(-1); }
+	// Live wheel-force strength (] / [ or the wheel's FfbUp/FfbDown buttons), saved to the user's Game.ini.
+	void AdjustFfbStrength(int32 Dir);
+	FString FfbMessage;
+	double FfbShownUntil = 0.0;
 	void OnCycleGraphics();
 	void OnTogglePhysics();
 	bool StartChrono();                 // false = stays on DriftCore (logged)
@@ -207,6 +216,10 @@ private:
 	TObjectPtr<UInputAction> AutoShiftAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> FfbTestAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> FfbUpAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> FfbDownAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> GraphicsAction;
 	UPROPERTY()

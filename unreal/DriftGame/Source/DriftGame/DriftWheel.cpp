@@ -38,6 +38,9 @@ void FDriftWheelMapping::Load()
 	GConfig->GetInt(S, TEXT("CameraButton"), Camera, GGameIni);
 	GConfig->GetInt(S, TEXT("ResetButton"), Reset, GGameIni);
 	GConfig->GetInt(S, TEXT("SpawnButton"), ResetToSpawn, GGameIni);
+	GConfig->GetInt(S, TEXT("FfbUpButton"), FfbUp, GGameIni);
+	GConfig->GetInt(S, TEXT("FfbDownButton"), FfbDown, GGameIni);
+	GConfig->GetFloat(S, TEXT("FfbMinForce"), FfbMinForce, GGameIni);
 	GConfig->GetInt(S, TEXT("FirstGearButton"), FirstGearButton, GGameIni);
 	GConfig->GetInt(S, TEXT("ReverseButton"), ReverseButton, GGameIni);
 	GConfig->GetFloat(S, TEXT("FfbGain"), FfbGain, GGameIni);
@@ -150,6 +153,12 @@ void FDriftWheel::SendForce(float Force, float Damper, float Spring, float VibAm
 	// synthesises the vibration at 1 kHz)
 	uint8 Buf[28];
 	FMemory::Memcpy(Buf, "DLFB", 4);
+	// Deadzone compensation: |f| -> m + (1 - m) |f|, ramped in over the first 2 % so it can't chatter on centre.
+	{
+		const float M = FMath::Clamp(Map.FfbMinForce, 0.f, 0.3f), A = FMath::Abs(Force);
+		const float Lifted = A < 0.02f ? A * (M + (1.f - M) * 0.02f) / 0.02f : M + (1.f - M) * A;
+		Force = FMath::Sign(Force) * FMath::Min(Lifted, 1.f);
+	}
 	const float Vals[6] = {FMath::Clamp(Map.bFfbInvert ? -Force : Force, -1.f, 1.f), FMath::Clamp(Damper, 0.f, 1.f), FMath::Clamp(Spring, 0.f, 1.f), Map.FfbGain,
 		FMath::Clamp(VibAmp, 0.f, 0.5f), FMath::Clamp(VibHz, 0.f, 200.f)};
 	FMemory::Memcpy(Buf + 4, Vals, sizeof(Vals));

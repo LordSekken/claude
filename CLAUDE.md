@@ -198,6 +198,13 @@ vite files) is an unrelated web app.
 - Anti-stall (2026-10-22, owner: "keeps dying"): Inputs.anti_stall (default on, like AC): with the clutch pedal in
   use, engage <= clamp((rpm - 0.55 idle) / 0.4 idle) - spins and low-gear pull-aways drag to idle, no stall.
   Reset to spawn: wheel B (SpawnButton=1), Backspace, gamepad Menu.
+- FFB findings (2026-10-22, AC drift recording vs ours at FfbSteerTorque 32): during drift initiation ours asks ~0.9
+  force into countersteer (AC ~0.5) yet the rim winds at half AC's rate (owner holds it). `ffb_helper --bench`
+  (no hands): G920 doesn't move below ~10 % force (one side needs ~20 %), linear above ~30 %, ~20 ms dead time,
+  max ~4950 deg/s^2. Added FfbMinForce=0.08 (game-side lift, ramp over 2 %) and live strength: ] / [ or wheel
+  RSB/LSB (FfbUpButton=9/FfbDownButton=8), 10 % steps of 32 N m, saved to the user Game.ini. Column torque split
+  (dc_debug_column, DC_COL_TRACE=1 in dc_maneuvers 1): tyre moment ~2.5x the mechanical-trail part, but zeroing
+  LTR barely changes the shape. AC's final_ff vs lateral g is linear (~0.6 g); ours rises fast then flattens.
 - Next: G920 sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)

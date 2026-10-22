@@ -378,6 +378,50 @@ static void send_input(void) {
 	sendto(sock_out, (const char *)buf, o, 0, (struct sockaddr *)&out_addr, sizeof(out_addr));
 }
 
+
+/* --bench: measures what the wheel does with a given force (no hands on the rim). For each force step it
+ * centres the rim with the spring, then pushes with a constant force and times 5 and 30 degrees of rim
+ * travel; acceleration = 2 * angle / t^2 shows whether the motor torque follows the commanded force. */
+static float bench_angle_deg(void) {
+	DIJOYSTATE2 js;
+	ff_dev->lpVtbl->Poll(ff_dev);
+	if (FAILED(ff_dev->lpVtbl->GetDeviceState(ff_dev, sizeof(js), &js)) || in_naxes <= 0) return 0.0f;
+	return *(const LONG *)((const unsigned char *)&js + in_axis_ofs[0]) / 32767.0f * 450.0f;
+}
+
+static void bench(void) {
+	static const float mags[] = {0.05f, 0.1f, 0.2f, 0.3f, 0.5f, 0.75f, 1.0f};
+	printf("force  dir  t5deg_ms  t30deg_ms  accel_deg_s2\n");
+	for (int i = 0; i < (int)(sizeof(mags) / sizeof(mags[0])); i++)
+		for (int side = -1; side <= 1; side += 2) {
+			for (int k = 0; k < 900; k++) {   /* centre */
+				ff_apply(0.0f, 0.3f, 1.0f);
+				if (k > 300 && SDL_fabsf(bench_angle_deg()) < 1.0f) break;
+				Sleep(1);
+			}
+			ff_apply(0.0f, 0.0f, 0.0f);
+			Sleep(30);
+			const float a0 = bench_angle_deg();
+			const Uint64 t0 = SDL_GetTicksNS();
+			float t5 = -1, t30 = -1;
+			while (1) {
+				ff_apply(side * mags[i], 0.0f, 0.0f);
+				const float d = SDL_fabsf(bench_angle_deg() - a0);
+				const float t = (float)(SDL_GetTicksNS() - t0) * 1e-6f;
+				if (t5 < 0 && d >= 5.0f) t5 = t;
+				if (d >= 30.0f) { t30 = t; break; }
+				if (t > 400.0f) break;
+				Sleep(1);
+			}
+			ff_apply(0.0f, 0.0f, 0.0f);
+			const float acc = t30 > 0 ? 2.0f * 30.0f / (t30 * t30 * 1e-6f) : 0.0f;
+			printf("%.2f   %+d   %7.0f   %8.0f   %10.0f\n", mags[i], side, t5, t30, acc);
+			fflush(stdout);
+		}
+	for (int k = 0; k < 800; k++) { ff_apply(0.0f, 0.3f, 1.0f); Sleep(1); }
+	ff_apply(0.0f, 0.0f, 0.0f);
+}
+
 int main(int argc, char **argv) {
 	DWORD parent_pid = 0;
 	for (int i = 1; i < argc - 1; i++)
@@ -428,6 +472,15 @@ int main(int argc, char **argv) {
 	if (!SDL_Init(SDL_INIT_JOYSTICK)) logmsg("SDL init failed: %s", SDL_GetError());
 
 	find_ffb();
+	for (int i = 1; i < argc; i++)
+		if (strcmp(argv[i], "--bench") == 0) {
+			timeBeginPeriod(1);
+			if (fx_const && ff_dev) bench();
+			else printf("no force-feedback wheel\n");
+			timeEndPeriod(1);
+			ff_release();
+			return 0;
+		}
 	if (!fx_const) open_input();
 	Uint64 last_scan = SDL_GetTicks();
 	float force = 0, damper = 0, spring = 0, gain = 1, vib_amp = 0, vib_hz = 0;

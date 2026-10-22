@@ -422,6 +422,8 @@ void ADriftCarPawn::CreateInput()
 	SpawnAction = MakeAction(TEXT("IA_ResetToSpawn"), EInputActionValueType::Boolean);
 	AutoShiftAction = MakeAction(TEXT("IA_AutoShift"), EInputActionValueType::Boolean);
 	FfbTestAction = MakeAction(TEXT("IA_FfbTest"), EInputActionValueType::Boolean);
+	FfbUpAction = MakeAction(TEXT("IA_FfbUp"), EInputActionValueType::Boolean);
+	FfbDownAction = MakeAction(TEXT("IA_FfbDown"), EInputActionValueType::Boolean);
 	GraphicsAction = MakeAction(TEXT("IA_Graphics"), EInputActionValueType::Boolean);
 	PhysicsAction = MakeAction(TEXT("IA_Physics"), EInputActionValueType::Boolean);
 
@@ -454,6 +456,8 @@ void ADriftCarPawn::CreateInput()
 	Mapping->MapKey(SpawnAction, EKeys::Gamepad_Special_Right);   // Menu / Start
 	Mapping->MapKey(AutoShiftAction, EKeys::M);
 	Mapping->MapKey(FfbTestAction, EKeys::T);
+	Mapping->MapKey(FfbUpAction, EKeys::RightBracket);
+	Mapping->MapKey(FfbDownAction, EKeys::LeftBracket);
 	Mapping->MapKey(GraphicsAction, EKeys::F5);
 	Mapping->MapKey(PhysicsAction, EKeys::F6);
 }
@@ -478,6 +482,8 @@ void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		Eic->BindAction(SpawnAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnResetToSpawn);
 		Eic->BindAction(AutoShiftAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleAutoShift);
 		Eic->BindAction(FfbTestAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbTest);
+		Eic->BindAction(FfbUpAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbStronger);
+		Eic->BindAction(FfbDownAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbWeaker);
 		Eic->BindAction(GraphicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnCycleGraphics);
 		Eic->BindAction(PhysicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnTogglePhysics);
 	}
@@ -554,6 +560,8 @@ bool ADriftCarPawn::ReadWheel()
 	if (Wheel->Pressed(M.Camera)) OnToggleCamera();
 	if (Wheel->Pressed(M.Reset)) OnReset();
 	if (Wheel->Pressed(M.ResetToSpawn)) OnResetToSpawn();
+	if (Wheel->Pressed(M.FfbUp)) AdjustFfbStrength(1);
+	if (Wheel->Pressed(M.FfbDown)) AdjustFfbStrength(-1);
 	if (M.FirstGearButton >= 0)
 	{
 		// H-shifter: out of gear = neutral once it's been used.
@@ -779,6 +787,21 @@ void ADriftCarPawn::OnCycleGraphics()
 	GraphicsPreset = (GraphicsPreset + 1) % DriftGraphics::Count;
 	DriftGraphics::Apply(GraphicsPreset);
 	GraphicsShownUntil = FPlatformTime::Seconds() + 3.0;
+}
+
+void ADriftCarPawn::AdjustFfbStrength(int32 Dir)
+{
+	if (!Chrono || Chrono->SteerTorqueRef <= 0.0)
+	{
+		return;
+	}
+	// Shown as a percentage of the 32 N m reference (100 %); 10 % steps.
+	const double Pct = FMath::Clamp(FMath::RoundToDouble(3200.0 / Chrono->SteerTorqueRef / 10.0) * 10.0 + Dir * 10.0, 30.0, 250.0);
+	Chrono->SteerTorqueRef = 3200.0 / Pct;
+	GConfig->SetDouble(TEXT("DriftChrono"), TEXT("FfbSteerTorque"), Chrono->SteerTorqueRef, GGameIni);
+	GConfig->Flush(false, GGameIni);
+	FfbMessage = FString::Printf(TEXT("Wheel force %d%%  ( [ / ] )"), FMath::RoundToInt(Pct));
+	FfbShownUntil = FPlatformTime::Seconds() + 2.5;
 }
 
 void ADriftCarPawn::OnFfbTest()

@@ -16,6 +16,10 @@ struct FDriftWheelMapping
 	bool bPedalsInverted = true;   // G920/G29: +1 released, -1 pressed
 	int32 ShiftUp = 4, ShiftDown = 5, Handbrake = 0, Camera = 3, Reset = 2;
 	int32 ResetToSpawn = 1;        // G920 B
+	int32 FfbUp = 9, FfbDown = 8;  // wheel force +/- 10 % (G920 RSB / LSB)
+	// G920 gear friction: below ~10 % force the rim doesn't move (measured with ffb_helper --bench).
+	// Small forces are lifted by this much so they still reach your hands (like irFFB's min force).
+	float FfbMinForce = 0.08f;
 	int32 FirstGearButton = 12;    // H-shifter: gears 1..6 on consecutive buttons (-1 = none)
 	int32 ReverseButton = 11;      // Driving Force Shifter on the Xbox G920: R comes first
 	float FfbGain = 1.f;
