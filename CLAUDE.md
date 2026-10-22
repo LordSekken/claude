@@ -191,6 +191,10 @@ vite files) is an unrelated web app.
   load high-pass L-R), kerb rumble (front wheel on KERB, f = v/0.6 m), slip buzz (front slip > 6 deg, 40 Hz);
   gains [DriftWheel] FfbRoad/FfbKerb/FfbSlip. Owner's AC g920.lut is near-linear, so no min force added.
   Helper build: MSVC + SDL3-devel-3.2.8-VC (scratchpad, re-download if gone) + winmm.lib.
+- FFB scale (2026-10-22): owner's AC vs our telemetry - in grip AC's final_ff is ~1.5x ours (post gain) and the
+  owner countersteered only ~60% of AC in drifts (fronts left scrubbing -0.3 rad). FfbSteerTorque 50 -> 32: the
+  simulated G920 (dc_maneuvers 8) then self-countersteers ~1:1 with front slip near 0 (at 50 it under-steered).
+  scratchpad drift_ffb.py / grip_ffb.py style analysis: bin by drift angle / steer, compare final_ff and steer.
 - Next: G920 sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)
