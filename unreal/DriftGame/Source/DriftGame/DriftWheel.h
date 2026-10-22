@@ -15,6 +15,7 @@ struct FDriftWheelMapping
 	float RotationDeg = 900.f;     // lock to lock
 	bool bPedalsInverted = true;   // G920/G29: +1 released, -1 pressed
 	int32 ShiftUp = 4, ShiftDown = 5, Handbrake = 0, Camera = 3, Reset = 2;
+	int32 ResetToSpawn = 1;        // G920 B
 	int32 FirstGearButton = 12;    // H-shifter: gears 1..6 on consecutive buttons (-1 = none)
 	int32 ReverseButton = 11;      // Driving Force Shifter on the Xbox G920: R comes first
 	float FfbGain = 1.f;

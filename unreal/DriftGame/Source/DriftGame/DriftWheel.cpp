@@ -37,6 +37,7 @@ void FDriftWheelMapping::Load()
 	GConfig->GetInt(S, TEXT("HandbrakeButton"), Handbrake, GGameIni);
 	GConfig->GetInt(S, TEXT("CameraButton"), Camera, GGameIni);
 	GConfig->GetInt(S, TEXT("ResetButton"), Reset, GGameIni);
+	GConfig->GetInt(S, TEXT("SpawnButton"), ResetToSpawn, GGameIni);
 	GConfig->GetInt(S, TEXT("FirstGearButton"), FirstGearButton, GGameIni);
 	GConfig->GetInt(S, TEXT("ReverseButton"), ReverseButton, GGameIni);
 	GConfig->GetFloat(S, TEXT("FfbGain"), FfbGain, GGameIni);

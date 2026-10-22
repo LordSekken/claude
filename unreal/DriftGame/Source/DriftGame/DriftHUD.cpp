@@ -60,7 +60,7 @@ void ADriftHUD::DrawHUD()
 		DrawText(FString::Printf(TEXT("Physics: %s  (F6)"), *Car->GetPhysicsName()), White, Canvas->ClipX * 0.5f - 90.f, 150.f, Big, 1.4f);
 	}
 	DrawText(FString::Printf(TEXT("%s physics %.1f ms"), *Car->GetPhysicsName(), Car->GetPhysicsMs()), Dim, X + 300.f, Y + 100.f, Small, 1.0f);
-	DrawText(TEXT("A/Space handbrake  B/E up  X/Q down  Y/C camera (chase/cockpit/hood)  View/R reset  RS/M auto-manual  T wheel FFB test  F5 graphics  F6 physics"), Dim, X, Y + 125.f, Small, 1.0f);
+	DrawText(TEXT("A/Space handbrake  B/E up  X/Q down  Y/C camera (chase/cockpit/hood)  View/R reset  B/Backspace/Menu spawn  RS/M auto-manual  T wheel FFB test  F5 graphics  F6 physics"), Dim, X, Y + 125.f, Small, 1.0f);
 	if (const FDriftWheel* W = Car->GetWheel())
 	{
 		// Wheel status and held buttons (their numbers go in [DriftWheel] in Game.ini).

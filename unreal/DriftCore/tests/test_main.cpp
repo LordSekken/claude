@@ -387,7 +387,8 @@ void TestStallRestart() {
 	FlatWorld w;
 	Vehicle v = Settled(TestCar(), w);
 	v.in.auto_clutch = false;
-	v.in.clutch = 0.0;   // in gear, clutch out, brakes on: stalls
+	v.in.anti_stall = false;
+	v.in.clutch = 0.0;   // in gear, clutch out, brakes on: stalls (anti-stall off)
 	v.in.brake = 1.0;
 	Run(2.0, v, w);
 	CHECK(v.Rpm() < 200.0, "stalled: %g rpm", v.Rpm());
@@ -497,6 +498,19 @@ void TestSynchro() {
 	}
 }
 
+// Clutch out, 3rd gear, braking to a stop: the anti-stall slips the clutch and the engine keeps idling.
+void TestAntiStall() {
+	FlatWorld w;
+	Vehicle v = Rolling(TestCar(), w, 3);
+	v.in.auto_clutch = false;
+	v.in.clutch = 0.0;
+	v.in.brake = 1.0;
+	double min_rpm = 1e9;
+	Run(4.0, v, w, [&](double t) { if (t > 0.5) min_rpm = std::min(min_rpm, v.Rpm()); });
+	CHECK(v.Speed() < 0.5, "stopped (%.2f m/s)", v.Speed());
+	CHECK(min_rpm > v.Spec().idle_rpm * 0.5, "engine kept running: min %.0f rpm", min_rpm);
+}
+
 void TestExampleSpecs() {
 	const char* files[] = {"legacy_rwd.json", "outback98_stock.json", "s14_sr20_drift.json", "miata_na_drift.json"};
 	for (const char* f : files) {
@@ -545,6 +559,7 @@ int main() {
 		{"car contact", TestCarContact},
 		{"set gear", TestSetGear},
 		{"synchro", TestSynchro},
+		{"anti-stall", TestAntiStall},
 		{"example specs", TestExampleSpecs},
 	};
 	for (const T& t : tests) {

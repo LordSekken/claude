@@ -150,8 +150,8 @@ void ADriftCarPawn::StartLocal()
 		StartChrono();
 	}
 	ResetCar(GetActorLocation(), GetActorRotation().Yaw);
-	LastOnRoad = GetActorLocation();
-	LastOnRoadYaw = GetActorRotation().Yaw;
+	LastOnRoad = SpawnLocation = GetActorLocation();
+	LastOnRoadYaw = SpawnYaw = GetActorRotation().Yaw;
 	LowestY = Vehicle->Origin().y - 300.0;
 	ChaseRotation = FRotator(-9.f, GetActorRotation().Yaw, 0.f);
 	if (CVarNoWheel.GetValueOnGameThread() == 0 && !FParse::Param(FCommandLine::Get(), TEXT("NoWheel")))
@@ -419,6 +419,7 @@ void ADriftCarPawn::CreateInput()
 	ShiftDownAction = MakeAction(TEXT("IA_ShiftDown"), EInputActionValueType::Boolean);
 	CameraAction = MakeAction(TEXT("IA_Camera"), EInputActionValueType::Boolean);
 	ResetAction = MakeAction(TEXT("IA_Reset"), EInputActionValueType::Boolean);
+	SpawnAction = MakeAction(TEXT("IA_ResetToSpawn"), EInputActionValueType::Boolean);
 	AutoShiftAction = MakeAction(TEXT("IA_AutoShift"), EInputActionValueType::Boolean);
 	FfbTestAction = MakeAction(TEXT("IA_FfbTest"), EInputActionValueType::Boolean);
 	GraphicsAction = MakeAction(TEXT("IA_Graphics"), EInputActionValueType::Boolean);
@@ -449,6 +450,8 @@ void ADriftCarPawn::CreateInput()
 	Mapping->MapKey(ShiftDownAction, EKeys::Q);
 	Mapping->MapKey(CameraAction, EKeys::C);
 	Mapping->MapKey(ResetAction, EKeys::R);
+	Mapping->MapKey(SpawnAction, EKeys::BackSpace);
+	Mapping->MapKey(SpawnAction, EKeys::Gamepad_Special_Right);   // Menu / Start
 	Mapping->MapKey(AutoShiftAction, EKeys::M);
 	Mapping->MapKey(FfbTestAction, EKeys::T);
 	Mapping->MapKey(GraphicsAction, EKeys::F5);
@@ -472,6 +475,7 @@ void ADriftCarPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompon
 		Eic->BindAction(ShiftDownAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnShiftDown);
 		Eic->BindAction(CameraAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleCamera);
 		Eic->BindAction(ResetAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnReset);
+		Eic->BindAction(SpawnAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnResetToSpawn);
 		Eic->BindAction(AutoShiftAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnToggleAutoShift);
 		Eic->BindAction(FfbTestAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnFfbTest);
 		Eic->BindAction(GraphicsAction, ETriggerEvent::Started, this, &ADriftCarPawn::OnCycleGraphics);
@@ -549,6 +553,7 @@ bool ADriftCarPawn::ReadWheel()
 	if (Wheel->Pressed(M.ShiftDown)) OnShiftDown();
 	if (Wheel->Pressed(M.Camera)) OnToggleCamera();
 	if (Wheel->Pressed(M.Reset)) OnReset();
+	if (Wheel->Pressed(M.ResetToSpawn)) OnResetToSpawn();
 	if (M.FirstGearButton >= 0)
 	{
 		// H-shifter: out of gear = neutral once it's been used.
@@ -755,6 +760,13 @@ void ADriftCarPawn::SetCamera(int32 Mode)
 void ADriftCarPawn::OnReset()
 {
 	ResetCar(GetActorLocation(), GetActorRotation().Yaw);
+}
+
+void ADriftCarPawn::OnResetToSpawn()
+{
+	ResetCar(SpawnLocation, SpawnYaw);
+	LastOnRoad = SpawnLocation;
+	LastOnRoadYaw = SpawnYaw;
 }
 
 void ADriftCarPawn::OnToggleAutoShift()

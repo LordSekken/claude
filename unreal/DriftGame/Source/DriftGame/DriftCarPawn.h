@@ -137,6 +137,7 @@ private:
 	void OnShiftDown();
 	void OnToggleCamera();
 	void OnReset();
+	void OnResetToSpawn();   // back to where the car started (wheel B, Backspace, gamepad Menu)
 	void OnToggleAutoShift();
 	void OnFfbTest();
 	void OnCycleGraphics();
@@ -177,6 +178,8 @@ private:
 	double SteerRatio = 8.0;          // steering wheel turns per road-wheel turn
 	FRotator ChaseRotation = FRotator::ZeroRotator;
 	FVector LastOnRoad = FVector::ZeroVector;
+	FVector SpawnLocation = FVector::ZeroVector;
+	float SpawnYaw = 0.f;
 	float LastOnRoadYaw = 0.f;
 	double LowestY = -1000.0;   // metres, DriftCore frame
 
@@ -198,6 +201,8 @@ private:
 	TObjectPtr<UInputAction> CameraAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> ResetAction;
+	UPROPERTY()
+	TObjectPtr<UInputAction> SpawnAction;
 	UPROPERTY()
 	TObjectPtr<UInputAction> AutoShiftAction;
 	UPROPERTY()

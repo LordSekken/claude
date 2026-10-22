@@ -527,6 +527,12 @@ void Vehicle::DriverControls(double dt, double& throttle, double& brake, double&
 		if (wheel_rpm > idle * 1.1) launch = 1.0;
 		if (launch < engage) engage = launch;
 	}
+	if (in.anti_stall && !in.auto_clutch) {
+		// Fully slipping at 55 % of idle, fully engaged again at 95 %: a spin or a low-gear pull-away
+		// drags the revs down to idle instead of killing the engine.
+		const double keep = Clamp((rpm_now - idle * 0.55) / (idle * 0.4), 0.0, 1.0);
+		if (keep < engage) engage = keep;
+	}
 	if (gear_ == 0 || shift_timer_ > 0.0) engage = 0.0;
 }
 

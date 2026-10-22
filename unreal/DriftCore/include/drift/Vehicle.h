@@ -66,6 +66,8 @@ struct Inputs {
 	double steering_assist = 0.0;
 	bool auto_clutch = true;
 	bool auto_shift = false;
+	// Like AC: the engine never stalls - below idle the clutch slips just enough to keep it running.
+	bool anti_stall = true;
 };
 
 struct WheelState {

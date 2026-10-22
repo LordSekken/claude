@@ -195,6 +195,9 @@ vite files) is an unrelated web app.
   owner countersteered only ~60% of AC in drifts (fronts left scrubbing -0.3 rad). FfbSteerTorque 50 -> 32: the
   simulated G920 (dc_maneuvers 8) then self-countersteers ~1:1 with front slip near 0 (at 50 it under-steered).
   scratchpad drift_ffb.py / grip_ffb.py style analysis: bin by drift angle / steer, compare final_ff and steer.
+- Anti-stall (2026-10-22, owner: "keeps dying"): Inputs.anti_stall (default on, like AC): with the clutch pedal in
+  use, engage <= clamp((rpm - 0.55 idle) / 0.4 idle) - spins and low-gear pull-aways drag to idle, no stall.
+  Reset to spawn: wheel B (SpawnButton=1), Backspace, gamepad Menu.
 - Next: G920 sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)
