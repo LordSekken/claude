@@ -12,6 +12,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <string>
+#include <iterator>
+#include <fstream>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -102,6 +105,7 @@ struct Sim {
     bool autoshift = false;
     int min_gear = 1, max_gear = 5;
     double shift_timer = 0;
+    double shift_up = 6900, shift_down = 2600;   // set from the car's limiter in main
     // Speed control.
     double th_int = 0.3;
 
@@ -151,8 +155,8 @@ struct Sim {
             shift_timer -= kDt;
             if (shift_timer <= 0) {
                 int g = c.gear;
-                if (s.rpm > 6900 && g < max_gear) ++g;
-                else if (s.rpm < 2600 && g > min_gear) --g;
+                if (s.rpm > shift_up && g < max_gear) ++g;
+                else if (s.rpm < shift_down && g > min_gear) --g;
                 if (g != c.gear) c.gear = g, shift_timer = 0.25;
             }
             c.clutch_engage = shift_timer > 0.1 ? 0.0 : 1.0;
@@ -830,6 +834,16 @@ int main(int argc, char** argv) {
     char err[512] = {};
     Sim m;
     m.car = dc_create(argv[1], argv[2], err, sizeof(err));
+    {
+        // Shift points from the car's limiter (the Miata's 7900 rpm left a 6300 rpm car stuck in 1st).
+        std::ifstream f(std::string(argv[1]) + "/" + argv[2] + "/car.json");
+        const std::string doc((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        const size_t at = doc.find("\"limiter_rpm\"");
+        if (at != std::string::npos) {
+            const double lim = std::atof(doc.c_str() + doc.find(':', at) + 1);
+            if (lim > 1000) m.shift_up = lim * 0.875, m.shift_down = lim * 0.33;
+        }
+    }
     if (!m.car) {
         std::printf("create failed: %s\n", err);
         return 1;

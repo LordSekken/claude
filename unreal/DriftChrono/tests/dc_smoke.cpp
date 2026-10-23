@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
     std::printf("settled: origin y %.3f, wheel loads %.0f %.0f %.0f %.0f (sum %.0f N), lock %.1f deg\n", s.origin[1],
                 s.wheel[0].fz, s.wheel[1].fz, s.wheel[2].fz, s.wheel[3].fz, fz, s.steer_lock * 57.3);
     Check(std::fabs(s.origin[1] - 0.275) < 0.05, "rests at about wheel-centre height");
-    Check(fz > 9000 && fz < 13000, "wheel loads carry the car's weight");
+    Check(fz > 8000 && fz < 22000, "wheel loads carry the car's weight");   // Miata ~11 kN .. wagon ~15 kN
     Check(s.wheel[0].center_local[0] < 0 && s.wheel[0].center_local[2] < 0, "wheel 0 is front-left (x<0, z<0)");
 
     c = {0, 0.6, 0, 0, 1, 1};

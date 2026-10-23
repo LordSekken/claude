@@ -279,6 +279,13 @@ struct dc_car {
     // 0 (= open diff) and a fixed limit. We set its limit per step like AC's LSD: preload + power/coast
     // fraction of the diff input torque; welded = a limit far above any tyre torque.
     std::shared_ptr<ChShaftsClutch> diff_lock;
+    // AWD viscous centre coupling: torque limit = c x driveshaft slip each step, capped.
+    std::shared_ptr<ChShaftsClutch> center_lock;
+    double center_visc = 0, center_cap = 0;
+    bool awd = false;
+    // Strut front suspension: kingpin points relative to each front wheel centre (chassis frame).
+    bool strut_kingpin = false;
+    ChVector3d kp_spindle[2], kp_lbj[2], kp_top[2];
     bool diff_welded = false;
     double diff_power = 0, diff_coast = 0, diff_preload = 0, final_drive = 4.0;
     double accumulator = 0;
@@ -302,14 +309,26 @@ ChFrame<> ChassisRef(const dc_car* c) { return c->veh->GetChassisBody()->GetFram
 // tyres' peak, which is what winds the rim into countersteer.
 double ColumnTorque(dc_car* c) {
     auto dwb = std::dynamic_pointer_cast<ChDoubleWishbone>(c->veh->GetAxle(0)->m_suspension);
-    if (!dwb) return 0.0;
+    if (!dwb && !c->strut_kingpin) return 0.0;
     double about_kingpins = 0.0;   // + = steers the wheels left (ISO, Z up)
     double parts[4] = {0, 0, 0, 0};   // vertical, lateral, longitudinal force, tyre moment
     for (auto side : {LEFT, RIGHT}) {
         auto tire = c->veh->GetWheel(0, side)->GetTire();
         if (!tire) continue;
-        const ChVector3d lbj = dwb->GetBallJointPosLCA(side);
-        const ChVector3d k = (dwb->GetBallJointPosUCA(side) - lbj).GetNormalized();
+        ChVector3d lbj, k;
+        if (dwb) {
+            lbj = dwb->GetBallJointPosLCA(side);
+            k = (dwb->GetBallJointPosUCA(side) - lbj).GetNormalized();
+        } else {
+            // MacPherson strut: kingpin = lower ball joint (moves with the wheel's travel) -> strut top
+            // mount (fixed to the body), from the design points in car.json.
+            const int s = side == LEFT ? 0 : 1;
+            const ChFrame<> ref = ChassisRef(c);
+            const ChVector3d spindle = c->veh->GetWheel(0, side)->GetSpindle()->GetPos();
+            const ChVector3d design = ref.TransformPointLocalToParent(c->kp_spindle[s]);
+            lbj = ref.TransformPointLocalToParent(c->kp_spindle[s] + c->kp_lbj[s]) + (spindle - design);
+            k = (ref.TransformPointLocalToParent(c->kp_spindle[s] + c->kp_top[s]) - lbj).GetNormalized();
+        }
         const TerrainForce f = tire->ReportTireForce(&c->terrain);   // force + moment at the wheel centre, global
         about_kingpins += Vdot(k, Vcross(f.point - lbj, f.force) + f.moment);
         const ChVector3d up = c->veh->GetChassisBody()->GetRot().GetAxisZ();
@@ -401,6 +420,34 @@ DC_API dc_car* dc_create(const char* car_root, const char* car_id, char* err, in
             if (auto cl = std::dynamic_pointer_cast<ChShaftsClutch>(item))
                 if (cl->GetShaft1() == left || cl->GetShaft2() == left) c->diff_lock = cl;
         if (c->diff_lock) c->diff_lock->SetModulation(1.0);
+        c->awd = car.find("\"drivetrain\": \"AWD\"") != std::string::npos;
+        if (c->awd) {
+            // ShaftsDriveline4WD adds its centre clutch first; the axle ones sit on the axle shafts.
+            std::vector<ChShaft*> axle_shafts;
+            for (int ax = 0; ax < 2; ++ax)
+                for (auto sd : {LEFT, RIGHT}) axle_shafts.push_back(c->veh->GetAxle(ax)->m_suspension->GetAxle(sd).get());
+            auto on_axle = [&](ChShaft* s) { return std::find(axle_shafts.begin(), axle_shafts.end(), s) != axle_shafts.end(); };
+            for (auto& item : c->veh->GetSystem()->GetOtherPhysicsItems())
+                if (auto cl = std::dynamic_pointer_cast<ChShaftsClutch>(item))
+                    if (!on_axle(cl->GetShaft1()) && !on_axle(cl->GetShaft2())) {
+                        c->center_lock = cl;
+                        break;
+                    }
+            c->center_visc = JsonNum(car, "center_visc_nms", 0.0);
+            c->center_cap = JsonNum(car, "center_cap_nm", 0.0);
+            if (c->center_lock) c->center_lock->SetModulation(1.0);
+        }
+        const auto lbj = JsonVec(car, "kingpin_lbj"), top = JsonVec(car, "kingpin_top");
+        if (lbj.size() == 3 && top.size() == 3) {
+            c->strut_kingpin = true;
+            const ChFrame<> ref_inv = ChassisRef(c.get()).GetInverse();
+            for (int s = 0; s < 2; ++s) {
+                c->kp_spindle[s] = ref_inv.TransformPointLocalToParent(WheelAt(c.get(), s)->GetSpindle()->GetPos());
+                const double half = std::fabs(c->kp_spindle[s].y()), m = s == 0 ? 1.0 : -1.0;   // right side mirrors y
+                c->kp_lbj[s] = ChVector3d(lbj[0], m * (lbj[1] - half), lbj[2]);
+                c->kp_top[s] = ChVector3d(top[0], m * (top[1] - half), top[2]);
+            }
+        }
     }
     c->forward_gears =
         static_cast<int>(JsonVec(ReadFile(GetVehicleDataFile(JsonStr(car, "transmission"))), "Forward Gear Ratios").size());
@@ -576,8 +623,14 @@ DC_API int dc_step(dc_car* car, double dt, const dc_controls* ctl, const dc_cont
             in.m_throttle = std::max(in.m_throttle, std::clamp((car->idle_rpm - rpm) / 250.0, 0.0, 0.6));
         in.m_braking = from.m_braking + (target.m_braking - from.m_braking) * k;
         car->veh->Synchronize(t, in, car->terrain);
+        if (car->center_lock) {
+            const double slip = (car->veh->GetSpindleOmega(0, LEFT) + car->veh->GetSpindleOmega(0, RIGHT) -
+                                 car->veh->GetSpindleOmega(1, LEFT) - car->veh->GetSpindleOmega(1, RIGHT)) * 0.5 *
+                                car->final_drive;
+            car->center_lock->SetTorqueLimit(std::min(car->center_cap, car->center_visc * std::fabs(slip)));
+        }
         if (car->diff_lock) {
-            const double t_in = car->veh->GetPowertrainAssembly()->GetOutputTorque() * car->final_drive;
+            const double t_in = car->veh->GetPowertrainAssembly()->GetOutputTorque() * car->final_drive * (car->awd ? 0.5 : 1.0);
             const double f = t_in >= 0 ? car->diff_power : car->diff_coast;
             car->diff_lock->SetTorqueLimit(car->diff_welded ? 1e5 : car->diff_preload + f * std::fabs(t_in));
         }
