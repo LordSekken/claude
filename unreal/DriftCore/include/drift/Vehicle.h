@@ -180,6 +180,7 @@ public:
 		double rack_force_ref = 0.0;      // rack force for full FFB; <= 0: AC's measured FFB curve on our slip
 		double steer_torque = 0.0;        // N m at the steering column, + turns the rim right (kingpin moments)
 		double steer_torque_ref = 0.0;    // column torque for full FFB; > 0 selects it (soft-limited)
+		double steer_torque_exp = 1.0;    // output = (torque / ref)^exp: > 1 lightens small loads (AC-like linear-in-g feel)
 	};
 	Controls ControlStep(double dt);
 	void ApplyExternal(const ExternalState& s, double dt);

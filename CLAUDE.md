@@ -205,6 +205,17 @@ vite files) is an unrelated web app.
   RSB/LSB (FfbUpButton=9/FfbDownButton=8), 10 % steps of 32 N m, saved to the user Game.ini. Column torque split
   (dc_debug_column, DC_COL_TRACE=1 in dc_maneuvers 1): tyre moment ~2.5x the mechanical-trail part, but zeroing
   LTR barely changes the shape. AC's final_ff vs lateral g is linear (~0.6 g); ours rises fast then flattens.
+- FFB curve (2026-10-22): AC's final_ff vs lateral g is linear (~0.6 g, grip) and ~0.5 mid-drift; ours (linear
+  T/32) was ~3x AC at 0.15 g then flat. Output = soft-limit((T / FfbSteerTorque)^FfbCurve), ref 84 N m, exp 1.4
+  fits AC in grip and mid-drift (T from the skidpad trace: 15/32/54 N m at 0.15/0.45/1.05 g). Live strength
+  readout is now % of the DefaultGame.ini ref. Owner's last session was mostly parked (1% above 40 km/h).
+- Cars from published specs: drift-sim/tools/spec_to_chrono.py (MacPherson struts, AWD with viscous centre
+  coupling = c x driveshaft slip per step, strut kingpin FFB from car.json kingpin_lbj/top). 98 Outback first try:
+  skidpad 0.71 g (understeer limit), 1.7 deg/g, 100-0 43.4 m. dc_maneuvers shift points now from car.json limiter.
+- Engine sound: unreal/DriftEngineSound = engine-sim (MIT) headless C API (FREE/HOLD/ABSORB dyno modes,
+  44.1 kHz mono), Outback EJ25 scripts (stock = EQUAL-length headers per owner; UEL = burble mod), des_render WAVs
+  (samples/, gitignored). Build dir C:\Dev\engine_sim_build, winflexbison in C:\Dev	ools. ~40 % of a core per
+  engine. Known: overrun too loud, idle very quiet, intake layer is ours. Not wired into the game yet.
 - Next: G920 sound (DriftAudio.* compiled, not wired), owner's targeted AC recordings (hands-off release test).
 
 ## Drift circuit generator (2026-10-18)

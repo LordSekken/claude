@@ -795,9 +795,10 @@ void ADriftCarPawn::AdjustFfbStrength(int32 Dir)
 	{
 		return;
 	}
-	// Shown as a percentage of the 32 N m reference (100 %); 10 % steps.
-	const double Pct = FMath::Clamp(FMath::RoundToDouble(3200.0 / Chrono->SteerTorqueRef / 10.0) * 10.0 + Dir * 10.0, 30.0, 250.0);
-	Chrono->SteerTorqueRef = 3200.0 / Pct;
+	// Shown as a percentage of the configured reference (DefaultGame.ini FfbSteerTorque = 100 %); 10 % steps.
+	const double Base = Chrono->DefaultSteerTorqueRef * 100.0;
+	const double Pct = FMath::Clamp(FMath::RoundToDouble(Base / Chrono->SteerTorqueRef / 10.0) * 10.0 + Dir * 10.0, 30.0, 250.0);
+	Chrono->SteerTorqueRef = Base / Pct;
 	GConfig->SetDouble(TEXT("DriftChrono"), TEXT("FfbSteerTorque"), Chrono->SteerTorqueRef, GGameIni);
 	GConfig->Flush(false, GGameIni);
 	FfbMessage = FString::Printf(TEXT("Wheel force %d%%  ( [ / ] )"), FMath::RoundToInt(Pct));

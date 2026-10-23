@@ -590,7 +590,11 @@ void Vehicle::ApplyExternal(const ExternalState& s, double dt) {
 	if (s.steer_torque_ref > 0.0) {
 		// Physical steering torque (tyre forces about the kingpins): soft-limited so a big load
 		// still reads as "more" instead of a flat clip.
-		const double x = s.steer_torque / s.steer_torque_ref;
+		// Physical steering torque (tyre forces about the kingpins) mapped onto the wheel: (T / ref)^exp,
+		// soft-limited so a big load still reads as "more" instead of a flat clip. exp 1.4 with ref 84 N m
+		// matches the owner's AC recordings (force vs lateral g in grip and mid-drift, BDC Miata, Brooklyn).
+		const double ax = std::pow(std::fabs(s.steer_torque) / s.steer_torque_ref, s.steer_torque_exp > 0.1 ? s.steer_torque_exp : 1.0);
+		const double x = s.steer_torque < 0.0 ? -ax : ax;
 		f = x / std::sqrt(std::sqrt(1.0 + x * x * x * x));
 	} else {
 		f = s.rack_force / s.rack_force_ref;

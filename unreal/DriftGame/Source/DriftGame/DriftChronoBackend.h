@@ -26,6 +26,8 @@ public:
 	double RackForceRef = 0.0;
 	// Steering-column torque (N m) for full force feedback ([DriftChrono] FfbSource=Kingpin, FfbSteerTorque).
 	double SteerTorqueRef = 0.0;
+	double DefaultSteerTorqueRef = 0.0;   // Game.ini value at load: 100 % on the in-game strength readout
+	double SteerTorqueExp = 1.4;          // [DriftChrono] FfbCurve
 
 private:
 	FDriftChrono() = default;
