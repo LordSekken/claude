@@ -1,0 +1,25 @@
+// outback_intake_nomuffler: 1998 Subaru Outback EJ25D. Equal-length headers, cone intake, muffler delete (cat kept, straight pipe after it).
+// Based on engine-sim (Copyright 2022 AngeTheGreat, MIT) atg-video-2 EJ25 scripts; see outback_ej25.mr.
+import "engine_sim.mr"
+import "outback_ej25.mr"
+
+units units()
+impulse_response_library ir_lib()
+
+public node main {
+    set_engine(
+        outback_ej25(
+            headers: ej25_equal_length_headers(),
+            intake_flow_rate: k_carb(420.0),
+            outlet_flow_rate: k_carb(700.0),
+            impulse_response: ir_lib.minimal_muffling_02,
+            audio_volume: 2.5 * 0.5 * 0.02,
+            exhaust_length: 1500 * units.mm,
+            idle_throttle_plate_position: 0.99821
+        )
+    )
+    set_vehicle(outback_vehicle())
+    set_transmission(outback_transmission())
+}
+
+main()

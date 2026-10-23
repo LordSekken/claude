@@ -1,0 +1,25 @@
+// outback_intake: 1998 Subaru Outback EJ25D. Equal-length headers, open cone intake (no airbox), stock cat + muffler.
+// Based on engine-sim (Copyright 2022 AngeTheGreat, MIT) atg-video-2 EJ25 scripts; see outback_ej25.mr.
+import "engine_sim.mr"
+import "outback_ej25.mr"
+
+units units()
+impulse_response_library ir_lib()
+
+public node main {
+    set_engine(
+        outback_ej25(
+            headers: ej25_equal_length_headers(),
+            intake_flow_rate: k_carb(420.0),
+            outlet_flow_rate: k_carb(450.0),
+            impulse_response: ir_lib.mild_exhaust_0,
+            audio_volume: 0.5 * 0.02,
+            exhaust_length: 2000 * units.mm,
+            idle_throttle_plate_position: 0.99821
+        )
+    )
+    set_vehicle(outback_vehicle())
+    set_transmission(outback_transmission())
+}
+
+main()
